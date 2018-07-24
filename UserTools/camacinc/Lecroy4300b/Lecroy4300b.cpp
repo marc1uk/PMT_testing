@@ -284,7 +284,7 @@ void Lecroy4300b::PrintPedestal()
 
 void Lecroy4300b::SetConfig(std::string config)
 {
-	std::ifstream fin (config.c_str());
+	std::ifstream fin (config.c_str());//config is a path to a file, C_str() turns string into character array
 	std::string Line;
 	std::stringstream ssL;
 
@@ -297,10 +297,10 @@ void Lecroy4300b::SetConfig(std::string config)
 		else if (Line.empty()) continue;
 		else
 		{
-			Line.erase(Line.begin()+Line.find('#'), Line.end());
+			Line.erase(Line.begin()+Line.find('#'), Line.end());//Getting rid of comments on the end of a line
 
-			ssL.str("");
-			ssL.clear();
+			ssL.str("");//str retrieves or sets contents of stringstream as standard string; clears stringstream
+			ssL.clear();//clears errorstate 
 			ssL << Line;
 			if (ssL.str() != "")
 			{

@@ -1,0 +1,7 @@
+NOTE ON GATES
+50 to 500ns width, should preceed analogue systems by at least 20ns
+
+For test function put a voltage of 0-10V on TRV input and run inittest
+
+
+---> To trigger output from CCUSB, access register block and subaddress 7 and write some bits to it	

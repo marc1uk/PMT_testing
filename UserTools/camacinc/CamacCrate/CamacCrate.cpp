@@ -1,5 +1,5 @@
 #include "CamacCrate.h"
-
+#include <cstdint>
 bool CamacCrate::IsOpen = false;
 int CamacCrate::ndev = 0;
 xxusb_device_type CamacCrate::devices[100] = {};
@@ -277,4 +277,33 @@ int CamacCrate::BittoInt(std::bitset<16> &bitref, int a, int b)
 	}
 	return sum;
 }
-
+/*Useful PMT Test Stand Functions, see CC_USB manual section 7 for description.
+*
+*Added by M Calle
+*/
+short CamacCrate::DelayGateGen(short chan, short trig, short out, short delay, short gate, short invert, short latch)//Produces A NIM gate signal outputted from A front panel channel
+{
+	return CAMAC_DGG(Mudev, chan, trig, out, delay, gate, invert, latch);	
+}
+short CamacCrate::RegWrite(short A, long Data)
+{
+	return CAMAC_register_write(Mudev, A, Data);
+}
+short CamacCrate::RegRead(short A, long &Data)
+{
+	return CAMAC_register_read(Mudev, A, &Data);
+}
+short CamacCrate::CC_NIM_Out(short A, short F, short inv, short latch)//Controls NIM output on the CC-USB -> doesn't produce a gate
+{
+	return CAMAC_Output_settings(Mudev, A, F, inv, latch);
+}
+int CamacCrate::ActionRegWrite(long value)
+{
+	//Writes data to the action register. Should return number of bytes written to register if successful
+	//If not successful, returns a -ve number.
+	//value |= (1u << 1); //hopefully changes the value of the second bit to 1
+	return xxusb_register_write(Mudev, 1, value);//Action register is only option, address of AR is 1
+}
+int CamacCrate::ActionRegRead(long &Data){
+	return xxusb_register_read(Mudev, 1, &Data);
+}

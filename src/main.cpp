@@ -1,16 +1,20 @@
+/*
+This Main File Is Mostly For Experimentation, It probably shouldn't be in any final program. If it is, 
+something is probably wrong with the program - Max C
+*/
 /* vim:set noexpandtab tabstop=4 wrap */
+#include <unistd.h>
 #include "CamacCrate.h"
 //#include "Lecroy3377.h"
-//#include "Lecroy4300b.h"
+#include "Lecroy4300b.h"
 #include "Jorway85A.h"
 #include "libxxusb.h"
 #include "usb.h"
 #include <ctime>
-#include <thread>
-#include <chrono>
+//#include <thread>
+//#include <chrono>
 #include <fstream>
-// c++98 does not define sleep_for, need to use posix usleep
-#include <unistd.h>
+#include <cstring>
 
 CamacCrate* Create(std::string cardname, std::string config, int cardslot);
 // see CCDAQ.cpp in ANNIEDAQ:MRD branch for example on using the CAMAC internal stack
@@ -35,13 +39,6 @@ struct Module           // One Struct to rule them all, One Struct to find them,
 };
 
 int main(int argc, char* argv[]){
-
-	if(argc<3){
-		std::cout<<"usage: ./main [test_duration_in_hours] [time_between_samples_in_minutes] [count_time_in_seconds=60]"<<std::endl;
-		return 0;
-	}
-	
-	
 	///////////////////////////////////////
 	// master branch: CCTrigger.h
 	
@@ -49,18 +46,22 @@ int main(int argc, char* argv[]){
 
 	////////////Scrambled Egg Part 1 Begins////////////
 	//Open up a new file called data.txt
-	std::ofstream data;
+	/*std::ofstream data;
 	data.open ("data.txt");
+	//Retrieve the desired number of times for the scaler to be read out
+	int reps;
+	std::cout << "Enter number of scaler readouts\n";
+	std::cin >> reps;
+	std::cout << "\nThe scalers will be read " << reps << " times\n";
+	//Retrieve time (in minutes) between readouts (executed in a for loop)
 	
-	// extract test stats
-	double testhours = atoi(argv[1]);
-	double testmins = testhours*60.;
-	int timeBet = atoi(argv[2]);
-	double countmins = (argc>3) ? (double(atoi(argv[3]))/60.) : 1.;
-	double onesampletime = timeBet+countmins; // time between readings is wait time + count time
-	int reps = (testmins/onesampletime) + 1;
-	std::cout << "The scalers will be read " << reps << " times over " << testhours << " hours";
-	std::cout << " with " << timeBet << " minutes between readouts, and " << countmins << " minutes used to determine scalar rate.\n";
+	int timeBet;
+	std::cout << "Enter the time (in minutes) between readouts: ";
+	std::cin >> timeBet;
+	std::cout << "There will be " << timeBet << " minutes between readouts.\n";
+	
+	//Initialise a counter for a loop
+	int count = 0;*/
 	
 	////////////End of Scrambled Egg part 1////////////	
 
@@ -121,19 +122,29 @@ int main(int argc, char* argv[]){
 	fin.close();
 	
 	std::cout << "Number of cards: " << Lcard.size() << std::endl;
-	// CamacCrate* CC = new CamacCrate;                         // CamacCrate at 0
-	
+	CamacCrate* CC = new CamacCrate;                         // CamacCrate at 0
+	CamacCrate* CC2 = new CamacCrate;
 	//////////////////////////////////////
 	// Create card object based on configuration read from file
 	
 	int trg_pos = 0;                                            // position of trigger card in list of cards
 	int scaler_pos = -1;                                         // position of scaler in list of cards
 	std::cout << "begin scan over " <<Lcard.size()<< " cards " << std::endl;
+	//Guessing this for loop scans over all cards
 	for (int i = 0; i < Lcard.size(); i++)                      // CHECK i
 	{
 		if (Lcard.at(i) == "TDC" || Lcard.at(i) == "ADC")
 		{
-			List.CC[Lcard.at(i)].push_back(Create(Lcard.at(i), Ccard.at(i), Ncard.at(i)));  //They use CC at 0
+			CamacCrate* cardPointer = Create(Lcard.at(i), Ccard.at(i), Ncard.at(i));
+			if (cardPointer == NULL)
+			{
+				std::cerr << "unknown card type " << Lcard.at(i) << std::endl;
+				return 0;
+			} 
+			else
+			{
+				List.CC[Lcard.at(i)].push_back(cardPointer);  //They use CC at 0
+			}
 		}
 		else if (Lcard.at(i) == "TRG")
 		{
@@ -150,101 +161,211 @@ int main(int argc, char* argv[]){
 		else std::cout << "\n\nUnkown card\n" << std::endl;
 	}
 	
-	std::cout << "Primary scaler is in slot ";
-	std::cout << List.CC["SCA"].at(scaler_pos)->GetSlot() << std::endl;
+	//std::cout << "Primary scaler is in slot ";
+	//std::cout << List.CC["SCA"].at(scaler_pos)->GetSlot() << std::endl;
 	
 	//////////////////////////////////////
 	// MRD branch: LeCroy.cpp - Initialise();
-	// clear all modules
-	for (int i = 0; i < List.CC[DC].size(); i++)
+	//std::cout << "Clearing modules and printing the registers" << std::endl;
+
+	//Spaghetti Code
+	long data1;
+	CC->RegRead(7,data1); 
+	std::cout << "DGG A Register Reads " << data1<< std::endl;
+	std::cout << "WriteReg DGG A Result: " << CC->RegWrite(7,1) << std::endl;
+	std::cout << "WriteReg DGG B Result: " << CC->RegWrite(8,0) << std::endl;
+	CC->RegRead(7,data1);
+	std::cout << "WriteReg Result DGG_EXT: " << CC->RegWrite(13,0) << std::endl;
+	std::cout << "DGG A Register Reads " << data1<< std::endl;
+	
+	/*
+	//Get trigger setting from user for each channel;
+	int trig1;
+	int trig2;
+	
+	std::cout << "Enter Trigger for Channel 1 Gate Generator (No. 0-7): ";
+	std::cin >> trig1;
+	std::cout << std::endl << "Enter Trigger for Channel 2 Gate Generator (No. 0-7): ";
+	std::cin >> trig2;
+	std::cout << std::endl << "Cheers Mate" << std::endl;
+	
+	trig1 = 5;
+	trig2 = 5;
+	*/
+	
+	//Set the gates from each generator channel, outputting on outputs O1 and O2
+	//std::cout << CC->DelayGateGen(0, trig1, 1, 1, 25, 0, 0) << std::endl;
+	//std::cout << CC->DelayGateGen(1, trig2, 2, 3, 23, 0, 0) << std::endl;
+	//Yet More Spaghetti Code
+	//Open File for ADC readouts
+	std::ofstream ADCRead;
+	ADCRead.open ("ADCRead.txt");
+	
+	int repeats;
+	std::cout << "Please enter number of writes to the action register: ";
+	std::cin >> repeats;
+	std::cout << std::endl << "There will be " << repeats << " writes\n";
+	
+	long RegStore;
+	CC->ActionRegRead(RegStore);
+	std::cout<<"Taking reference for action register: " << RegStore << std::endl;
+	long RegDeactivated = RegStore;          // FIXME replace with a version with action reg asserted to 0
+	long RegActivated = RegStore | 1u << 1;  // Modify bit 1 of the register to "1" (CCUSB Trigger)
+	int ARegDat;
+	long ARegRead;
+	for (int i = 0; i < repeats; i++)
 	{
-		List.CC[DC].at(i)->ClearAll();
+		//Clearing Settings on channels
+		std::cout << "01: disabling USB trigger on both channels"<<std::endl;
+		// DelayGateGen(DGG, trig_src, NIM_out, delay_ns, gate_ns, NIM_invert, NIM_latch);	
+		ARegDat = CC->DelayGateGen(0,0,1,1,25,0,0); // set DGG 0 on output 1 to no src (disabled)
+		if(ARegDat<0) std::cerr<<"failed to disable USB trigger on output 0!" << std::endl;
+		ARegDat = CC->DelayGateGen(1,0,2,1,5,0,0); // "   "   1 "   "     2  "   "
+		if(ARegDat<0) std::cerr<<"failed to disable USB trigger on output 0!" << std::endl;
+		//usleep(500);
+		
+		//Change the trigger mode of O1 to USB
+		std::cout << "02: Enabling USB trigger on Channel O1" << std::endl;
+		ARegDat = CC->DelayGateGen(0,6,1,1,25,0,0); // set DGG 0 on output 1 to USB trigger
+		if(ARegDat<0) std::cerr<<"failed to enable USB trigger on output 0!" << std::endl;
+		//usleep(500);
+		
+		//Change the second bit to 1 to trigger the response from O1
+		std::cout << "03: " << RegActivated << " will be written to the register" <<std::endl;
+		ARegDat = CC->ActionRegWrite(RegActivated);
+		std::cout<<"	ActionRegWrite wrote "<<ARegDat<<" bytes to register, ";
+		if(ARegDat<0) std::cerr<<"failed to fire USB trigger on output 1!" << std::endl;
+		//usleep(500);	
+		ARegDat = CC->ActionRegRead(ARegRead);
+		if(ARegDat<0) std::cerr<<"failed (" << ARegDat << ") to read register to confirm write success!" << std::endl;  // XXX
+		else std::cout << "ARegRead has become " << ARegRead << std::endl;
+		
+		//Change the value of the second bit back to its original value
+		std::cout << "04: Restoring Register to original value" << std::endl;
+		ARegDat = CC->ActionRegWrite(RegDeactivated);
+		if(ARegDat<0) std::cerr<<"failed to (" << ARegDat << ") deactivate USB trigger on output 1!" << std::endl;    // XXX 
+		else std::cout << "Wrote " << ARegDat << " bytes to register, ";
+		//usleep(500);
+		ARegDat = CC->ActionRegRead(ARegRead);
+		if(ARegDat<0) std::cerr<<"failed (" << ARegDat << ") to read register to confirm write success!" << std::endl; // XXX
+		else std::cout << "ARegRead has become " << ARegRead << std::endl;
+		//usleep(500);
+		//Change the trigger mode of O1 to "End Trigger" and set O2 to USB trigger
+		std::cout<<std::endl;
+		
+		
+		// CHANNEL 2
+		std::cout << "05: Disabling USB trigger on Channel 01 and enabling on Channel O2" << std::endl;
+		ARegDat = CC->DelayGateGen(0,0,1,1,25,0,0);    // disable USB trigger on DGG 0
+		if(ARegDat<0) std::cerr<<"failed to disable USB trigger on output 0!" << std::endl;
+		ARegDat = CC->DelayGateGen(1,6,2,1,5,0,0);    // enable  USB trigger on DGG 1
+		if(ARegDat<0) std::cerr<<"failed to enable USB trigger on output 1!" << std::endl;
+		
+		//Trigger on channel 2
+		//FALLS OVER HERE (SOMETIMES): WRITING TO REG RETURNS -VE VALUE
+		std::cout << "06: " << RegActivated << " Will be written to the register" <<std::endl;
+		ARegDat = CC->ActionRegWrite(RegActivated);
+		if(ARegDat<0) std::cerr<<"failed to fire USB trigger on output 2!" << std::endl;
+		else std::cout << "ActionRegWrite Wrote " << ARegDat << " bytes to register." <<std::endl;
+		usleep(500);
+		//It doesn't seem to want to actually spit out a signal
+		
+		//Finishing triggering on channel 2
+		std::cout << "07: Ending Trigger on Channel 2 and resetting Register" << std::endl;
+		ARegDat = CC->ActionRegWrite(RegDeactivated);
+		if(ARegDat<0) std::cerr<<"failed to deactivate USB trigger on output 2!" << std::endl;
+		else std::cout << "Wrote " << ARegDat << " bytes to file. Register restored." <<std::endl;
+		usleep(500);
+		ARegDat = CC->DelayGateGen(1,0,2,1,5,0,0);   // disable DGG 1
+		if(ARegDat<0) std::cerr<<"failed to diable USB trigger on output 2!" << std::endl;
+		std::cout<<std::endl;
+		std::cout<<"============================"<<std::endl;
+		
+		for (int j = 0; j < 1; j++)
+		{ 
+			for (int i = 0; i < List.CC["ADC"].size(); i++)
+				{
+					int ADCData;
+					//List.CC["ADC"].at(i)->ClearAll();
+					//List.CC["ADC"].at(i)->GetRegister();
+					//List.CC["ADC"].at(i)->PrintRegRaw();   // not implemented for Scaler yet
+					//ADCRead << List.CC["ADC"].at(i)->ReadOut(ADCData, 1);
+					int initTest = List.CC["ADC"].at(i)->InitTest();
+					std::cout << "Your InitTest returned " << initTest << std::endl;
+					/*
+					std::cout << "Your Data: " << ADCData << std::endl;
+					*/
+					List.CC["ADC"].at(i)->EncRegister();
+					List.CC["ADC"].at(i)->PrintRegister();
+					//ADCRead << List.CC["ADC"].at(i)->DumpCompressed(std::map<int, int> &mData);
+					//ADCRead << List.CC["ADC"].at(i)->ReadOut(ADCData, 0) << " ";
+					
+	
+				}
+			ADCRead << std::endl;
+		}
+
+		
+		usleep(1000000);
 	}
-	//Ask User for PMT ID's
-	std::string pmtID1;
-	std::string pmtID2;
-	std::cout << "Please enter first PMT ID: ";
-	std::cin >> pmtID1;
-	std::cout << std::endl << "Enter second PMT ID: ";
-	std::cin >> pmtID2;
-	std::cout << std::endl;
+	ADCRead.close();	
 	
-	
-	data << "PMTID1 " << pmtID1 << ", PMTID2 " << pmtID2 << ", " << std::endl;
-	data << "timestamp, ch1 reading, ch1 rate, ch2 reading, ch2 rate, ch3 reading, ch3 rate, ch4 reading, ch4 rate"<<std::endl;
+	/*
 	// Execute: MAIN LOOP
 	////////////scrambled egg code part 2////////////
-	for( int count=0; count < reps; count++)  // loop over readings
+	for(i=0; i < reps; i++)
 	{
 		std::cout << "Clearing All Scalars" << std::endl;
-		List.CC["SCA"].at(scaler_pos)->ClearAll();
+
+		for (int i = 0; i < List.CC["SCA"].size(); i++)
+		{
+			List.CC["SCA"].at(i)->ClearAll();
+		}
+		std::cout << "Done" << std::endl;
 		
-		//waiting for one minute for counts to accumulate
-		std::cout << "Measuring rates" << std::endl;
-		//std::this_thread::sleep_for(std::chrono::seconds(60));
-		unsigned int counttimeinmicroseconds = countmins*60.*1000000.; //1000000
-		usleep(counttimeinmicroseconds);
-		
+		//waiting for one minute
+		std::cout << "Counting" << std::endl;
+		std::this_thread::sleep_for(std::chrono::seconds(60));
 		//Reading the scalars
+		int count2 = timeBet;
 		std::cout << "Reading Scalers and writing to file" << std::endl;
 		int ret = List.CC["SCA"].at(scaler_pos)->ReadAll(scalervals);
 
-		if(not ret < 0){   // FIXME need better error checking
+		if(not ret < 0){   // need better error checking
 			std::cout << "error reading scalers: response was " << ret << std::endl;
-		}
+		} 
 		else {
-			// get and write timestamp to file
+			//Need to insert some sort of timestamp here
+			//data << "scaler values were: ";
+			//Get timestamp
+			
 			std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
 			time_t tt;
 			tt = std::chrono::system_clock::to_time_t ( time );
 			std::string timeStamp = ctime(&tt);
 			timeStamp.erase(timeStamp.find_last_not_of(" \t\n\015\014\013")+1);
 			data << timeStamp << ", ";
-			// write scalar values and rates to file
+			
 			for(int chan=0; chan<4; chan++){
-				data << scalervals[chan] << ", ";
-				double darkRate = double (scalervals[chan]) / countmins;
+				double darkRate = double (scalervals[chan]) / 60.;
 				data << darkRate;
 				if(chan<3) data << ", ";
 			}
 			data << std::endl;
 		}
-		std::cout << "Done writing to file" << std::endl;
-
-///////////////////// debug:
-//		std::cout << "Clearing All Scalars" << std::endl;
-//		List.CC["SCA"].at(scaler_pos)->ClearAll();
-//		std::cout << "zero'd values are: " << std::endl;
-//		for(int chan=0; chan<4; chan++){
-//			std::cout << scalervals[chan];
-//			if(chan<3) std::cout << ", ";
-//	}
-//		data << std::endl;
-//////////////////// end debug
-		
+		std::cout << "Done" << std::endl;
 		//data << "End of Loop " << count << std::endl;
 		//For loop will now wait for user-specified time
-		std::cout<<"Waiting "<<timeBet<<" mins to next reading"<<std::endl;
-		if(timeBet>1){
-			// for monitoring the program, printout every minute
-			for(int count2=0; count2 < timeBet; count2++)
-			{
-				std::cout << (timeBet-count2) << " minutes to next reading..." << std::endl;
-				//std::this_thread::sleep_for (std::chrono::seconds(1));
-				double minuteinmicroseconds = 60.*1000000.;
-				usleep(minuteinmicroseconds);
-			}
-		} else {
-			double sleeptimeinmicroseconds = timeBet*60.*1000000.;
-			usleep(sleeptimeinmicroseconds);
+		for(count2; count2 > 0; count2--)
+		{
+			std::cout << "Waiting\n";
+			std::this_thread::sleep_for (std::chrono::seconds(1));
 		}
-
-	} // end of loop over readings = end of test
-	
+	}
 	//Test
 	//std::cout << "Test Channel: " << List.CC["SCA"].at(scaler_pos)->TestChannel(3) << std::endl;
 	////////////End of Scrambled Egg Code part 2////////////
-	data.close();//close data file
+	data.close();//close data file*/
 
 	Lcard.clear();
 	Ncard.clear();
@@ -260,21 +381,29 @@ int main(int argc, char* argv[]){
 
 CamacCrate* Create(std::string cardname, std::string config, int cardslot)
 {
-	CamacCrate* ccp;
+	CamacCrate* ccp= NULL;
 //	if (cardname == "TDC")
 //	{
 //	  std::cout<<"TDC"<<std::endl;
 //		ccp = new Lecroy3377(cardslot, config);
 //	}
-//	if (cardname == "ADC")
-//	{
-//	  std::cout<<"ADC"<<std::endl;
-//		ccp = new Lecroy4300b(cardslot, config);
-//	}
-	if (cardname == "SCA")
+	std::cout<<"cardname is "<<cardname<<", comp with 'ADC' is " << (cardname=="ADC") <<std::endl;
+	std::cout<<"strcmp is = "<<strcmp(cardname.c_str(),"ADC") << std::endl;
+	if (cardname == "ADC")
+	{
+		std::cout<<"ADC"<<std::endl;
+		ccp = new Lecroy4300b(cardslot, config);
+	}
+	else if (cardname == "SCA")
 	{
 	  std::cout<<"SCA"<<std::endl;
 		ccp = new Jorway85A(cardslot, config);
 	}
+	else
+	{
+		std::cerr <<"Card type not specified " << cardname << std::endl;
+	}
 	return ccp;
 }
+
+

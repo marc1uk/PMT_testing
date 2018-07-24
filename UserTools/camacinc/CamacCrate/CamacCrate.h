@@ -42,6 +42,13 @@ class CamacCrate
 		int ClearFIFO();
 		int GetSlot(int ID);
 		void ListSlot();
+		//PMT Test Stand Functions
+		short DelayGateGen(short chan, short trig, short out, short delay, short gate, short invert, short latch);
+		short RegWrite(short A, long Data);
+		short RegRead(short A, long &Data);
+		short CC_NIM_Out(short A, short F, short inv, short latch);
+		int ActionRegWrite(long value);
+		int ActionRegRead(long &Data);
 
 		int Z();		//Z
 		int C();		//C
