@@ -1,0 +1,12 @@
+#List of modules, tab spacing
+#Supported modules are
+#TDC: Lecroy3377
+#ADC: Lecroy4300b
+#SCA: Jorway85a (dummy: nothing to configure)
+#TRG: Lecroy3377 with RWM as input, fires always
+#If TRG is not specified, the first TDC found is used
+#
+#Type	Slot	#Register file
+SCA	1	configfiles/SCAreg
+#TDC	18	configfiles/TDCreg
+#ADC	12  	configfiles/ADCreg

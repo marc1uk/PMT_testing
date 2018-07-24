@@ -1,0 +1,27 @@
+all: lib/libMyTools.so
+	g++ -g src/main.cpp -o main -I include -L lib -lStore -lMyTools -lToolChain -lDataModel -lLogging -lServiceDiscovery -lpthread $(DataModelInclude) $(MyToolsInclude)  $(MyToolsLib)
+
+lib/libDataModel.so: lib/libStore.so include/Camac lib/Camac
+	cp DataModel/DataModel.h include/
+	cp DataModel/CardData.h include/
+	cp DataModel/MRDData.h include/
+	cp DataModel/TriggerData.h include/
+	cp DataModel/timestamp.h include/
+	cp DataModel/eventlog.h include/
+	g++ -g -fPIC -shared DataModel/DataModel.cpp DataModel/CardData.cpp DataModel/MRDData.cpp DataModel/TriggerData.cpp DataModel/timestamp.cc DataModel/eventlog.cc -I include -L lib -lStore  -lLogging  -o lib/libDataModel.so $(DataModelInclude) $(DataModelLib) $(ZMQLib) $(ZMQInclude)  $(BoostLib) $(BoostInclude)
+
+lib/libMyTools.so: lib/libStore.so include/Tool.h lib/libDataModel.so lib/libLogging.so
+	g++ -g -fPIC -shared  UserTools/Factory/Factory.cpp UserTools/Plots/OriginalPlots.cpp -I include -L lib -lCC -lL3 -lL4 -lm -lxx_usb -o lib/libMyTools.so $(MyToolsInclude) $(MyToolsLib) $(DataModelInclude)
+
+include/Camac:
+	cp UserTools/camacinc/CamacCrate/CamacCrate.h include/
+#	cp UserTools/camacinc/Lecroy3377/Lecroy3377.h include/
+#	cp UserTools/camacinc/Lecroy4300b/Lecroy4300b.h include/
+	cp UserTools/camacinc/XXUSB/libxxusb.h include/
+	cp UserTools/camacinc/XXUSB/usb.h include/
+
+lib/Camac:
+	cp UserTools/camacinc/makelib/libxx_usb.so lib/
+	g++ -g -shared -fPIC UserTools/camacinc/CamacCrate/CamacCrate.cpp -I include -L lib -o lib/libCC.so
+#	g++ -g -shared -fPIC UserTools/camacinc/Lecroy3377/Lecroy3377.cpp -I include -L lib -o lib/libL3.so
+#	g++ -g -shared -fPIC UserTools/camacinc/Lecroy4300b/Lecroy4300b.cpp -I include -L lib -o lib/libL4.so

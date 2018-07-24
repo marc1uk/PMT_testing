@@ -1,0 +1,34 @@
+To allow communications with the CCUSB first the permissions of libusb must be modified.
+This can be done in debian stretch by adding a user defined override rule. 
+Make or add to the file:
+	/etc/udev/rules.d/99-user.rules
+The following line:
+	SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device",SYSFS{idVendor}=="0x16dc" , SYSFS{idProduct}=="0001", MODE="0666"
+where idVendor and idProduct may need to be modified.
+The values may be found by identifying the CC_USB device in the list of usb devices shown by
+	user@host:~$ lsusb
+	... 
+	Bus 004 Device 001: ID 1d6b:0001 Linux Foundation 1.1 root hub
+	Bus 007 Device 007: ID 16dc:0001 Wiener, Plein & Baus CC          <<< Wiener CC_USB is here
+	Bus 007 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+	...
+Noting the hex number, and entering it into:
+	user@host:~$ lsusb -v -d 16dc:0001
+	Bus 007 Device 007: ID 16dc:0001 Wiener, Plein & Baus CC
+	Couldn't open device, some information will be missing
+	Device Descriptor:
+	  bLength                18
+	  bDescriptorType         1
+	  bcdUSB               2.00
+	  bDeviceClass            0 (Defined at Interface level)
+	  bDeviceSubClass         0 
+	  bDeviceProtocol         0 
+	  bMaxPacketSize0        64
+	  idVendor           0x16dc Wiener, Plein & Baus                  <<< idVendor  is here
+	  idProduct          0x0001 CC                                    <<< idProduct is here
+	  bcdDevice            0.87
+	  iManufacturer           1 
+	  iProduct                2 
+	  iSerial                 3
+	... 
+
