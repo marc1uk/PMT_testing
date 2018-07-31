@@ -1,5 +1,6 @@
 /* vim:set noexpandtab tabstop=4 wrap */
 #include "CamacCrate.h"
+#include "CAENC117B.h"
 //#include "Lecroy3377.h"
 //#include "Lecroy4300b.h"
 #include "Jorway85A.h"
@@ -35,36 +36,9 @@ struct Module           // One Struct to rule them all, One Struct to find them,
 };
 
 int main(int argc, char* argv[]){
-
-	if(argc<3){
-		std::cout<<"usage: ./main [test_duration_in_hours] [time_between_samples_in_minutes] [count_time_in_seconds=60]"<<std::endl;
-		return 0;
-	}
-	
-	
 	///////////////////////////////////////
 	// master branch: CCTrigger.h
 	
-
-
-	////////////Scrambled Egg Part 1 Begins////////////
-	//Open up a new file called data.txt
-	std::ofstream data;
-	data.open ("data.txt");
-	
-	// extract test stats
-	double testhours = atoi(argv[1]);
-	double testmins = testhours*60.;
-	int timeBet = atoi(argv[2]);
-	double countmins = (argc>3) ? (double(atoi(argv[3]))/60.) : 1.;
-	double onesampletime = timeBet+countmins; // time between readings is wait time + count time
-	int reps = (testmins/onesampletime) + 1;
-	std::cout << "The scalers will be read " << reps << " times over " << testhours << " hours";
-	std::cout << " with " << timeBet << " minutes between readouts, and " << countmins << " minutes used to determine scalar rate.\n";
-	
-	////////////End of Scrambled Egg part 1////////////	
-
-
 	std::string configcc;           // Module slots
 	
 	std::vector<std::string> Lcard, Ccard;
@@ -127,7 +101,8 @@ int main(int argc, char* argv[]){
 	// Create card object based on configuration read from file
 	
 	int trg_pos = 0;                                            // position of trigger card in list of cards
-	int scaler_pos = -1;                                         // position of scaler in list of cards
+	int scaler_pos = -1;                                        // position of scaler in list of cards
+	int caen_pos = -2;                                          // position of CAEN controller in list of cards
 	std::cout << "begin scan over " <<Lcard.size()<< " cards " << std::endl;
 	for (int i = 0; i < Lcard.size(); i++)                      // CHECK i
 	{
@@ -146,106 +121,122 @@ int main(int argc, char* argv[]){
 			std::cout << "scaler found, list pos = " << scaler_pos << std::endl;
 			List.CC["SCA"].push_back(Create("SCA", Ccard.at(i), Ncard.at(i)));               //They use CC at 0
 			std::cout << "constructed Jorway85A module" << std::endl;
+			std::cout << "---------------------------------------------------"<<std::endl;
+			std::cout << " "<<std::endl;
+		}
+		else if (Lcard.at(i) == "CAEN")
+		{
+			caen_pos = List.CC["CAEN"].size();
+			std::cout << "CAENET controller found, list pos = " <<caen_pos <<std::endl;
+			List.CC["CAEN"].push_back(Create("CAEN",Ccard.at(i), Ncard.at(i)));
+			std::cout << "constructed CAENC117B controller module" <<std::endl;
+			std::cout << "---------------------------------------------------"<<std::endl;
+			std::cout << " "<<std::endl;
 		}
 		else std::cout << "\n\nUnkown card\n" << std::endl;
 	}
 	
-	std::cout << "Primary scaler is in slot ";
-	std::cout << List.CC["SCA"].at(scaler_pos)->GetSlot() << std::endl;
+	std::cout <<"CAENET Controller is in slot ";
+	std::cout << List.CC["CAEN"].at(caen_pos)->GetSlot() << std::endl;
+
+	//std::cout << "Primary scaler is in slot ";
+	//std::cout << List.CC["SCA"].at(scaler_pos)->GetSlot() << std::endl;
+
+	std::cout << "---------------------------------------------------"<<std::endl;
+	std::cout << " "<<std::endl;
 	
 	//////////////////////////////////////
 	// MRD branch: LeCroy.cpp - Initialise();
-	// clear all modules
+	//std::cout << "Clearing modules and printing the registers" << std::endl;
+
 	for (int i = 0; i < List.CC[DC].size(); i++)
 	{
 		List.CC[DC].at(i)->ClearAll();
+		//List.CC[DC].at(i)->GetRegister();   // not implemented for Scaler yet
+		//List.CC[DC].at(i)->PrintRegRaw();   // not implemented for Scaler yet
 	}
-	//Ask User for PMT ID's
-	std::string pmtID1;
-	std::string pmtID2;
-	std::cout << "Please enter first PMT ID: ";
-	std::cin >> pmtID1;
-	std::cout << std::endl << "Enter second PMT ID: ";
-	std::cin >> pmtID2;
-	std::cout << std::endl;
 	
-	
-	data << "PMTID1 " << pmtID1 << ", PMTID2 " << pmtID2 << ", " << std::endl;
-	data << "timestamp, ch1 reading, ch1 rate, ch2 reading, ch2 rate, ch3 reading, ch3 rate, ch4 reading, ch4 rate"<<std::endl;
 	// Execute: MAIN LOOP
-	////////////scrambled egg code part 2////////////
-	for( int count=0; count < reps; count++)  // loop over readings
-	{
-		std::cout << "Clearing All Scalars" << std::endl;
-		List.CC["SCA"].at(scaler_pos)->ClearAll();
-		
-		//waiting for one minute for counts to accumulate
-		std::cout << "Measuring rates" << std::endl;
-		//std::this_thread::sleep_for(std::chrono::seconds(60));
-		unsigned int counttimeinmicroseconds = countmins*60.*1000000.; //1000000
-		usleep(counttimeinmicroseconds);
-		
-		//Reading the scalars
-		std::cout << "Reading Scalers and writing to file" << std::endl;
-		int ret = List.CC["SCA"].at(scaler_pos)->ReadAll(scalervals);
-
-		if(not ret < 0){   // FIXME need better error checking
-			std::cout << "error reading scalers: response was " << ret << std::endl;
-		}
-		else {
-			// get and write timestamp to file
-			std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
-			time_t tt;
-			tt = std::chrono::system_clock::to_time_t ( time );
-			std::string timeStamp = ctime(&tt);
-			timeStamp.erase(timeStamp.find_last_not_of(" \t\n\015\014\013")+1);
-			data << timeStamp << ", ";
-			// write scalar values and rates to file
-			for(int chan=0; chan<4; chan++){
-				data << scalervals[chan] << ", ";
-				double darkRate = double (scalervals[chan]) / countmins;
-				data << darkRate;
-				if(chan<3) data << ", ";
-			}
-			data << std::endl;
-		}
-		std::cout << "Done writing to file" << std::endl;
-
-///////////////////// debug:
-//		std::cout << "Clearing All Scalars" << std::endl;
-//		List.CC["SCA"].at(scaler_pos)->ClearAll();
-//		std::cout << "zero'd values are: " << std::endl;
-//		for(int chan=0; chan<4; chan++){
-//			std::cout << scalervals[chan];
-//			if(chan<3) std::cout << ", ";
-//	}
-//		data << std::endl;
-//////////////////// end debug
-		
-		//data << "End of Loop " << count << std::endl;
-		//For loop will now wait for user-specified time
-		std::cout<<"Waiting "<<timeBet<<" mins to next reading"<<std::endl;
-		if(timeBet>1){
-			// for monitoring the program, printout every minute
-			for(int count2=0; count2 < timeBet; count2++)
-			{
-				std::cout << (timeBet-count2) << " minutes to next reading..." << std::endl;
-				//std::this_thread::sleep_for (std::chrono::seconds(1));
-				double minuteinmicroseconds = 60.*1000000.;
-				usleep(minuteinmicroseconds);
-			}
-		} else {
-			double sleeptimeinmicroseconds = timeBet*60.*1000000.;
-			usleep(sleeptimeinmicroseconds);
-		}
-
-	} // end of loop over readings = end of test
+	//for (int loopi=0; loopi<10; loopi++){
 	
-	//Test
-	//std::cout << "Test Channel: " << List.CC["SCA"].at(scaler_pos)->TestChannel(3) << std::endl;
-	////////////End of Scrambled Egg Code part 2////////////
-	data.close();//close data file
+		//////////////////////////////////////
+		// Master branch: CCTrigger.cpp - Execute();
+		
+		/* these were disabled - unused?
+		//Clearing all the cards, using iterators
+			iL = List.CC.begin();		//iL is an iterator over a map<string, vector<CamacCrate*> >
+			for ( ; iL != List.CC.end(); ++iL)
+			{
+				iC = iL->second.begin();	//iC is an iterator over a vector<CamacCrate*>
+				for ( ; iC != iL->second.end(); ++iC)
+					(*iC)->ClearAll();
+			}
+		
+		//Clearing all the cards, using indices
+			for (int i = 0; i < List.CC["TDC"].size(); i++)
+				List.CC["TDC"].at(i)->ClearAll();
+			for (int i = 0; i < List.CC["ADC"].size(); i++)
+				List.CC["ADC"].at(i)->ClearAll();
+		*/
+		
+		// unused for PMT testing. for now, at least
+//		TRG = false;
+//		if(List.CC["TDC"].at(trg_pos)->TestEvent() == 1) TRG = true;  // for real (not soft/random) trigger
+		
+		////////////////////////////////////
+		// MRD branch: Lecroy.cpp - Execute();
+		
+		// the ToolChain seems to have two LeCroy tools back-to-back, to read TDCs and ADCs.
+		// effectively run the code once with DC="ADC", then again with DC="TDC".
+//		DC = "TDC";
+//		if (TRG){
+//			//std::cout << "TRG on!\n" << std::endl;
+//			for (int i = 0; i < List.CC[DC].size(); i++)
+//			{
+//				Data.ch.clear();
+//				if (trg_mode == 2) List.CC[DC].at(i)->InitTest();
+//				List.CC[DC].at(i)->GetData(Data.ch);
+//				if (Data.ch.size() != 0)
+//				{
+//					List.Data[DC].Slot.push_back(List.CC[DC].at(i)->GetSlot());
+//					List.Data[DC].Num.push_back(Data);
+//					List.CC[DC].at(i)->ClearAll();
+//				}
+//			}
+//		}
+		
+	/*	int ret = List.CC["SCA"].at(scaler_pos)->ReadAll(scalervals);
+		if(not ret < 0){   // need better error checking
+			std::cout << "error reading scalers: response was " << ret << std::endl;
+		} else {
+			std::cout << "scaler values were: ";
+			for(int chan=0; chan<4; chan++){
+				std::cout << scalervals[chan];
+				if(chan<3) std::cout << ", ";
+			}
+			std::cout<<std::endl;
+		}
+*/
+		//int ret_caen = List.CC["CAEN"].at(caen_pos)->ReadCrateOccupation();
+	//	List.CC["CAEN"].at(caen_pos)->TestOperation();		
+		//int ret_vmax = List.CC["CAEN"].at(caen_pos)->SetVmax(6,7,1000);
+	//	List.CC["CAEN"].at(caen_pos)->SetV1(6, 0, 100);
+	/*(	int readslot;
+		for (int i=0;i<1;i++){
+			readslot= List.CC["CAEN"].at(caen_pos)->ReadSlotN(i);
+		}
+*/
+		int ret_test;
+		for (int i_test=0;i_test<15	;i_test++){
+			ret_test=List.CC["CAEN"].at(caen_pos)->TestOperation(i_test);
+		}
+	//	int ret_lam = List.CC["CAEN"].at(caen_pos)->EnLAM();
+	//	ret_lam = List.CC["CAEN"].at(caen_pos)->EnLAM();
+	//	std::cout << List.CC["CAEN"].at(caen_pos)->TestLAM()<<std::endl;
 
+		
+	//}  // end ToolAnalysis Execute / for loop
+	
 	Lcard.clear();
 	Ncard.clear();
 	Data.ch.clear();
@@ -263,18 +254,23 @@ CamacCrate* Create(std::string cardname, std::string config, int cardslot)
 	CamacCrate* ccp;
 //	if (cardname == "TDC")
 //	{
-//	  std::cout<<"TDC"<<std::endl;
+//		std::cout<<"TDC"<<std::endl;
 //		ccp = new Lecroy3377(cardslot, config);
 //	}
 //	if (cardname == "ADC")
 //	{
-//	  std::cout<<"ADC"<<std::endl;
+//		std::cout<<"ADC"<<std::endl;
 //		ccp = new Lecroy4300b(cardslot, config);
 //	}
 	if (cardname == "SCA")
 	{
-	  std::cout<<"SCA"<<std::endl;
+		std::cout<<"SCA"<<std::endl;
 		ccp = new Jorway85A(cardslot, config);
+	}
+	if (cardname == "CAEN")
+	{
+		std::cout<<"CAEN"<<std::endl;
+		ccp = new CAENC117B(cardslot, config);
 	}
 	return ccp;
 }

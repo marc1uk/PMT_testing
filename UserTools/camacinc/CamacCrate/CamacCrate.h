@@ -88,6 +88,28 @@ class CamacCrate
 		virtual int TestChannel(int scalernum) { return 0; }
 		virtual int ReadAndClear(int scalernum) { return 0; }
 		virtual int ReadAll(int *Data) { return 0; }
+
+		//CAENETC117B
+		virtual int CommunicationSequence(int controller, int CrateNumber, int operation, std::vector<int> &values, std::vector<int> &response) {return 0;}
+		virtual int ReadSlotN(int n) {return 0;}
+		virtual int TestOperation(int crateN) {return 0;}
+		virtual int ReadCrateOccupation() {return 0;}
+		virtual int ReadChannelStatus(int slot, int channel) {return 0;}
+		virtual int ReadChannelParameterValues(int slot, int channel) {return 0;}
+		virtual int SetV0(int slot, int channel, int V0) {return 0;}
+		virtual int SetV1(int slot, int channel, int V1) {return 0;}
+		virtual int SetI0(int slot, int channel, int I0) {return 0;}
+		virtual int SetI1(int slot, int channel, int I1) {return 0;}
+		virtual int SetVmax(int slot, int channel, int Vmax) {return 0;}
+		virtual int SetRampUp(int slot, int channel, int Rup) {return 0;}
+		virtual int SetRampDown(int slot, int channel, int Rdown) {return 0;}
+		virtual int SetTrip(int slot, int channel, int Trip) {return 0;}
+		virtual int SetFlag(int slot, int channel, int Flag) {return 0;}
+		virtual int GetHighByte(int large_number) {return 0;}
+		virtual int GetLowByte(int large_number) {return 0;}
+		virtual std::string ConvertInttoAsci(int asci_code) {return 0;}
+		virtual int CombineBytes(int low, int high) {return 0;}
+		virtual unsigned int Combine4Bytes(int byte1, int byte2, int byte3, int byte4) {return 0;}
 		
 		
 		//COMMON
@@ -108,6 +130,7 @@ class CamacCrate
 		virtual int WRITE(int F, int A, int &Data, int &Q, int &X) { return 0; }//F(x)·A(y)
 		virtual int GetSlot() { return 0; }
 		virtual int GetID() { return 0; }
+
 
 	protected:
 

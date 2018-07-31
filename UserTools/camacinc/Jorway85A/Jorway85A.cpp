@@ -17,13 +17,10 @@ Jorway85A::Jorway85A(int NSlot, std::string config, int i) : CamacCrate(i)	//Sub
 
 int Jorway85A::ReadScaler(int scalernum) //Read Scaler scalernum.
 {
-	//std::cout<<"reading scalar "<<scalernum;
 	if(scalernum>3||scalernum<0) return -1;
 	int Data = 0;
 	int Q = 0, X = 0;
-
-	int ret = READ(scalernum, 0, Data, Q, X);
-	//std::cout<< ", return val = "<< ret<<", Data = "<<Data<<std::endl;
+	int ret = READ(0, scalernum, Data, Q, X);
 	if (ret < 0){
 		return ret;
 	} else {
@@ -34,15 +31,10 @@ int Jorway85A::ReadScaler(int scalernum) //Read Scaler scalernum.
 
 int Jorway85A::ClearScaler(int scalernum) // Clear Scaler scalernum.
 {
-	std::cout<<"clearing scalar "<<scalernum<<std::endl;
-	std::cout<<"Before clear counts["<<scalernum<<"] = "<<ReadScaler(scalernum)<<std::endl;
 	if(scalernum>3||scalernum<0) return -1;
 	int Data = 0;
 	int Q = 0, X = 0;
 	int ret = READ(9, scalernum, Data, Q, X);
-	std::cout<< ", return val = "<< ret<<", Q = " << Q << ", X = " << X << ", Data = "<<Data<<std::endl;
-	std::cout<<"After clear counts["<<scalernum<<"] = "<<ReadScaler(scalernum)<<std::endl;
-	std::cout<<" zeroing counts[" << scalernum << "]" << std::endl;
 	counts[scalernum] = 0;
 	return (ret < 0 ) ? ret : Q;
 }
@@ -75,7 +67,6 @@ int Jorway85A::ReadAll(int *Data) //Read all scalers
 {
 	int returnval=0;
 	for(int scalernum=0; scalernum<4; scalernum++){
-		//std::cout << "Scalernum = " << scalernum << " ";
 		returnval = ReadScaler(scalernum);
 		Data[scalernum]=counts[scalernum];
 	}
@@ -100,7 +91,6 @@ int Jorway85A::READ(int F, int A, int &Data, int &Q, int &X)	//Generic READ
 	long lData;
 	int ret = CamacCrate::READ(GetID(), F, A, lData, Q, X);
 	Data = lData;
-	//std::cout << "GetID (): " << GetID() << "\n lData = " << lData << std::endl;
 	return ret;
 }
 

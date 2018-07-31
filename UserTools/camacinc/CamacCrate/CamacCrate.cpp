@@ -226,12 +226,12 @@ int CamacCrate::ClearFIFO()
 
 int CamacCrate::READ(int ID, int F, int A, long &Data, int &Q, int &X)	//Generic READ func, suitable for F 0-15, 24-31
 {
-	return CAMAC_read(Mudev, Slot.at(ID), F, A, &Data, &Q, &X);
+	return CAMAC_read(Mudev, Slot.at(ID), A, F, &Data, &Q, &X);
 }
 
 int CamacCrate::WRITE(int ID, int F, int A, long &Data, int &Q, int &X)	//Generic WRITE func, suitable for F 16-23
 {
-	return CAMAC_write(Mudev, Slot.at(ID), F, A, Data, &Q, &X);
+	return CAMAC_write(Mudev, Slot.at(ID), A, F, Data, &Q, &X);
 }
 
 void CamacCrate::ListSlot()		//List all modules in CAMAC
