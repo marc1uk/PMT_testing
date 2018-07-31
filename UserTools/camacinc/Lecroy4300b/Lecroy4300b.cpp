@@ -7,7 +7,7 @@ Lecroy4300b::Lecroy4300b(int NSlot, std::string config, int i) : CamacCrate(i)
 	ClearAll();
 	SetConfig(config);
 	LoadPedestal(config);
-//	SetPedestal();
+	SetPedestal();
 	EncRegister();
 	SetRegister();
 }
@@ -36,7 +36,9 @@ int Lecroy4300b::ReadPed(int Ch, int &Data)	//Read pedestal memory (8 bits) for 
 {
 	int Q = 0, X = 0;
 	int ret = READ(Ch, 1, Data, Q, X);
+	std::cout<<Data<<std::endl;
 	if (ret < 0) return ret;
+
 	else return Q;
 }
 

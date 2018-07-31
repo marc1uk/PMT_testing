@@ -8,7 +8,7 @@ CCE	0	#12	CAMAC Compression Enable CCE = 1 data compression cycle, CCE = 0 block
 CSR	1	#13	CAMAC Sequential Readout CSR = 1 Valid data read sequentially, CSR = 0 Random access readout
 CLE	1	#14	CAMAC Look-at-me Enable CLE = 1 LAM set as data ready, CLE = 0 LAM output inhibited
 OFS	0	#15	Overflow Suppress OFS = 1 suppress overflows in ECE or CCE, OFS = 0 disabled
-
+#                       ### cannot have blank lines!!
 #StartPed
 #Chan 	Ped
 0	0 #

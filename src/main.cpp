@@ -12,9 +12,44 @@ something is probably wrong with the program - Max C
 #include "usb.h"
 #include <ctime>
 //#include <thread>
-//#include <chrono>
+#include <chrono>
 #include <fstream>
 #include <cstring>
+#include <bitset>
+
+unsigned int masks[] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000, 0x8000, 
+			0x10000, 0x20000, 0x40000, 0x80000, 0x100000, 0x200000, 0x400000, 0x800000, 0x1000000, 0x2000000, 0x4000000, 0x8000000,
+			0x10000000, 0x20000000, 0x40000000, 0x80000000};
+short SetRegBits(CamacCrate* CC, int regnum, int firstbit, int numbits, bool on_or_off){
+	//std::cout<<"setting register "<<regnum<<" bit(s) "<<firstbit;
+	//if(numbits>1) std::cout<<"-"<<(firstbit+numbits-1);
+	//std::cout<<" to "<<on_or_off<<std::endl;
+	
+	long placeholder=0;
+	int myQ, myX;
+	short myret = CC->READ(0,regnum,0,placeholder,myQ, myX);
+	for(int biti=0; biti<numbits; biti++){
+		if(on_or_off){
+			placeholder |= masks[firstbit+biti];
+			//std::cout<<"setting bit "<<firstbit+biti<<" to on via or with mask [" << std::bitset<32>(masks[firstbit+biti]) << "]"<<std::endl;
+		} else {
+			placeholder &= ~masks[firstbit+biti];
+			//std::cout<<"setting bit "<<firstbit+biti<<" to off via and with mask [" << std::bitset<32>(~masks[firstbit+biti]) << "]"<<std::endl;
+		}
+		//placeholder & masks[bitnumber]
+	}
+	//std::cout<<"setting register "<<regnum<<" to ["<<std::bitset<32>(placeholder)<<"]"<<std::endl;
+	myret = CC->WRITE(0,regnum,16,placeholder,myQ,myX);
+	//std::cout<<"register set returned "<<myret<<std::endl;
+	if(myret<0) std::cout<<"OH NO, RETURNED "<<myret<<" WHEN TRYING TO SET REGISTER "<<regnum<<" bit(s) "<<firstbit<<"-"<<(firstbit+numbits-1)<<" to "<<on_or_off<<std::endl;
+	return myret;
+};
+void PrintReg(CamacCrate* CC,int regnum){
+	long placeholder=0;
+	int myQ, myX;
+	short myret = CC->READ(0,regnum,0,placeholder,myQ, myX);
+	std::cout<<"Register "<<regnum<<" is ["<<std::bitset<32>(placeholder)<<"]"<<std::endl;
+}
 
 CamacCrate* Create(std::string cardname, std::string config, int cardslot);
 // see CCDAQ.cpp in ANNIEDAQ:MRD branch for example on using the CAMAC internal stack
@@ -123,19 +158,21 @@ int main(int argc, char* argv[]){
 	
 	std::cout << "Number of cards: " << Lcard.size() << std::endl;
 	CamacCrate* CC = new CamacCrate;                         // CamacCrate at 0
-	CamacCrate* CC2 = new CamacCrate;
+	
 	//////////////////////////////////////
 	// Create card object based on configuration read from file
 	
 	int trg_pos = 0;                                            // position of trigger card in list of cards
-	int scaler_pos = -1;                                         // position of scaler in list of cards
+	int scaler_pos = -1;
+	int adc_pos = -2;                                           // position of scaler in list of cards
 	std::cout << "begin scan over " <<Lcard.size()<< " cards " << std::endl;
-	//Guessing this for loop scans over all cards
-	for (int i = 0; i < Lcard.size(); i++)                      // CHECK i
+	for (int i = 0; i < Lcard.size(); i++)
 	{
 		if (Lcard.at(i) == "TDC" || Lcard.at(i) == "ADC")
 		{
+			std::cout << "Creating CamacCrate Object" << std::endl;
 			CamacCrate* cardPointer = Create(Lcard.at(i), Ccard.at(i), Ncard.at(i));
+			std::cout << "Successfully Created CamacCrate Object." << std::endl;
 			if (cardPointer == NULL)
 			{
 				std::cerr << "unknown card type " << Lcard.at(i) << std::endl;
@@ -143,8 +180,13 @@ int main(int argc, char* argv[]){
 			} 
 			else
 			{
+				//It falls over somewhere around here
+				adc_pos = List.CC["TDC"].size();
+				std::cout << "ADC found, list pos = " << adc_pos << std::endl;
 				List.CC[Lcard.at(i)].push_back(cardPointer);  //They use CC at 0
+				std::cout << "constructed Lecroy 4300b module" << std::endl;
 			}
+			
 		}
 		else if (Lcard.at(i) == "TRG")
 		{
@@ -167,147 +209,106 @@ int main(int argc, char* argv[]){
 	//////////////////////////////////////
 	// MRD branch: LeCroy.cpp - Initialise();
 	//std::cout << "Clearing modules and printing the registers" << std::endl;
-
-	//Spaghetti Code
-	long data1;
-	CC->RegRead(7,data1); 
-	std::cout << "DGG A Register Reads " << data1<< std::endl;
-	std::cout << "WriteReg DGG A Result: " << CC->RegWrite(7,1) << std::endl;
-	std::cout << "WriteReg DGG B Result: " << CC->RegWrite(8,0) << std::endl;
-	CC->RegRead(7,data1);
-	std::cout << "WriteReg Result DGG_EXT: " << CC->RegWrite(13,0) << std::endl;
-	std::cout << "DGG A Register Reads " << data1<< std::endl;
 	
-	/*
-	//Get trigger setting from user for each channel;
-	int trig1;
-	int trig2;
-	
-	std::cout << "Enter Trigger for Channel 1 Gate Generator (No. 0-7): ";
-	std::cin >> trig1;
-	std::cout << std::endl << "Enter Trigger for Channel 2 Gate Generator (No. 0-7): ";
-	std::cin >> trig2;
-	std::cout << std::endl << "Cheers Mate" << std::endl;
-	
-	trig1 = 5;
-	trig2 = 5;
-	*/
-	
-	//Set the gates from each generator channel, outputting on outputs O1 and O2
-	//std::cout << CC->DelayGateGen(0, trig1, 1, 1, 25, 0, 0) << std::endl;
-	//std::cout << CC->DelayGateGen(1, trig2, 2, 3, 23, 0, 0) << std::endl;
-	//Yet More Spaghetti Code
 	//Open File for ADC readouts
 	std::ofstream ADCRead;
 	ADCRead.open ("ADCRead.txt");
 	
-	int repeats;
+	int repeats=1;
 	std::cout << "Please enter number of writes to the action register: ";
 	std::cin >> repeats;
 	std::cout << std::endl << "There will be " << repeats << " writes\n";
 	
 	long RegStore;
 	CC->ActionRegRead(RegStore);
-	std::cout<<"Taking reference for action register: " << RegStore << std::endl;
-	long RegDeactivated = RegStore;          // FIXME replace with a version with action reg asserted to 0
-	long RegActivated = RegStore | 1u << 1;  // Modify bit 1 of the register to "1" (CCUSB Trigger)
+	long RegActivated   = RegStore | 0x02;  // Modify bit 1 of the register to "1" (CCUSB Trigger)
+	long RegDeactivated = RegStore & ~0x02;  // Modify bit 1 to 0 (disabled CCUSB trigger. (De-assert of the USB trigger is actually not needed)
+	
+	CC->C();
+	CC->Z();
+	usleep(1000);
+	
+
+	
+	// Configure CC-USB DGG_A to fire on USB trigger, and output to NIM O1
+	//SetRegBits(CamacCrate* CC, int regnum, int firstbit, int numbits, bool on_or_off)
+	//1. set up Nim out 1 to DGG_A: write register 5 bits 0-2 to 2 (3 for firmware<5 gives no output)
+	SetRegBits(CC,5,0,3,false);    // set bits 0-2 on
+	SetRegBits(CC,5,1,1,true);     // set bit 1 on
+	//3. set DGG_A source to usb: write register 6 bits 16-18 to 6
+	SetRegBits(CC,6,16,1,false);  // set bit 16 to off
+	SetRegBits(CC,6,17,2,true);   // set bits 17,18 to on
+	//5. set DGG_A delay to 0ns: write register 7 bits 0-15 to 0
+	SetRegBits(CC,7,0,16,false);
+	//6. set DGG_A gate (duration) to maximum (655,350 ns) : write register 7 bits 16-31 to 1        // actually gives 2.5us = 2500ns = 250 of 10ns
+	SetRegBits(CC,7,16,16,false); // set bits 16-31 off
+	SetRegBits(CC,7,20,1,true);   // set bit 16 on
+	//9. set extended delays on DGG_A and DGG_B to to 0: write register 13 bits 0-15 and 16-31 to 0
+	SetRegBits(CC,13,0,32,false);
+	//9.5 optional: set register 4 bits 8-10=3, 12=0 (invert off), 13=0 (latch off) to flicker green LED on usb trigger
+	SetRegBits(CC,4,8,2,true);   // set bits 8-9 on
+	SetRegBits(CC,4,10,1,false); // set bit 10 off
+	SetRegBits(CC,4,12,2,false); // set bits 12 and 13 off
+	usleep(1000);
+	
+	//10. FIRE TORPEDOS: write action register: just to test
+	//for(int fires=0; fires<3; fires++){
+	//	CC->ActionRegWrite(RegActivated);
+	//	usleep(1000000);
+	//}
+	List.CC["ADC"].at(0)->GetPedestal();
+	// Fire the LEDs and read the Lecroys to measure the pulse integral
 	int ARegDat;
 	long ARegRead;
 	for (int i = 0; i < repeats; i++)
 	{
-		//Clearing Settings on channels
-		std::cout << "01: disabling USB trigger on both channels"<<std::endl;
-		// DelayGateGen(DGG, trig_src, NIM_out, delay_ns, gate_ns, NIM_invert, NIM_latch);	
-		ARegDat = CC->DelayGateGen(0,0,1,1,25,0,0); // set DGG 0 on output 1 to no src (disabled)
-		if(ARegDat<0) std::cerr<<"failed to disable USB trigger on output 0!" << std::endl;
-		ARegDat = CC->DelayGateGen(1,0,2,1,5,0,0); // "   "   1 "   "     2  "   "
-		if(ARegDat<0) std::cerr<<"failed to disable USB trigger on output 0!" << std::endl;
-		//usleep(500);
+		//break;
+		// Clear all ADCs
+		std::cout<<"clearing ADCs"<<std::endl;
+		for (int i = 0; i < List.CC["ADC"].size(); i++)	{ List.CC["ADC"].at(i)->ClearAll(); }
 		
-		//Change the trigger mode of O1 to USB
-		std::cout << "02: Enabling USB trigger on Channel O1" << std::endl;
-		ARegDat = CC->DelayGateGen(0,6,1,1,25,0,0); // set DGG 0 on output 1 to USB trigger
-		if(ARegDat<0) std::cerr<<"failed to enable USB trigger on output 0!" << std::endl;
-		//usleep(500);
+		// Fire LED! (and gate ADCs)
+		std::cout<<"Firing LEDs"<<std::endl;
+		CC->ActionRegWrite(RegActivated);
 		
-		//Change the second bit to 1 to trigger the response from O1
-		std::cout << "03: " << RegActivated << " will be written to the register" <<std::endl;
-		ARegDat = CC->ActionRegWrite(RegActivated);
-		std::cout<<"	ActionRegWrite wrote "<<ARegDat<<" bytes to register, ";
-		if(ARegDat<0) std::cerr<<"failed to fire USB trigger on output 1!" << std::endl;
-		//usleep(500);	
-		ARegDat = CC->ActionRegRead(ARegRead);
-		if(ARegDat<0) std::cerr<<"failed (" << ARegDat << ") to read register to confirm write success!" << std::endl;  // XXX
-		else std::cout << "ARegRead has become " << ARegRead << std::endl;
+		// Put timestamp in file
+		std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
+		time_t tt;
+		tt = std::chrono::system_clock::to_time_t ( time );
+		std::string timeStamp = ctime(&tt);
+		timeStamp.erase(timeStamp.find_last_not_of(" \t\n\015\014\013")+1);
+		ADCRead << timeStamp;
 		
-		//Change the value of the second bit back to its original value
-		std::cout << "04: Restoring Register to original value" << std::endl;
-		ARegDat = CC->ActionRegWrite(RegDeactivated);
-		if(ARegDat<0) std::cerr<<"failed to (" << ARegDat << ") deactivate USB trigger on output 1!" << std::endl;    // XXX 
-		else std::cout << "Wrote " << ARegDat << " bytes to register, ";
-		//usleep(500);
-		ARegDat = CC->ActionRegRead(ARegRead);
-		if(ARegDat<0) std::cerr<<"failed (" << ARegDat << ") to read register to confirm write success!" << std::endl; // XXX
-		else std::cout << "ARegRead has become " << ARegRead << std::endl;
-		//usleep(500);
-		//Change the trigger mode of O1 to "End Trigger" and set O2 to USB trigger
-		std::cout<<std::endl;
+		std::cout<<"Appending to file: " << timeStamp;
+			
+		// Read ADC value
+		for (int i = 0; i < List.CC["ADC"].size(); i++){
 		
-		
-		// CHANNEL 2
-		std::cout << "05: Disabling USB trigger on Channel 01 and enabling on Channel O2" << std::endl;
-		ARegDat = CC->DelayGateGen(0,0,1,1,25,0,0);    // disable USB trigger on DGG 0
-		if(ARegDat<0) std::cerr<<"failed to disable USB trigger on output 0!" << std::endl;
-		ARegDat = CC->DelayGateGen(1,6,2,1,5,0,0);    // enable  USB trigger on DGG 1
-		if(ARegDat<0) std::cerr<<"failed to enable USB trigger on output 1!" << std::endl;
-		
-		//Trigger on channel 2
-		//FALLS OVER HERE (SOMETIMES): WRITING TO REG RETURNS -VE VALUE
-		std::cout << "06: " << RegActivated << " Will be written to the register" <<std::endl;
-		ARegDat = CC->ActionRegWrite(RegActivated);
-		if(ARegDat<0) std::cerr<<"failed to fire USB trigger on output 2!" << std::endl;
-		else std::cout << "ActionRegWrite Wrote " << ARegDat << " bytes to register." <<std::endl;
-		usleep(500);
-		//It doesn't seem to want to actually spit out a signal
-		
-		//Finishing triggering on channel 2
-		std::cout << "07: Ending Trigger on Channel 2 and resetting Register" << std::endl;
-		ARegDat = CC->ActionRegWrite(RegDeactivated);
-		if(ARegDat<0) std::cerr<<"failed to deactivate USB trigger on output 2!" << std::endl;
-		else std::cout << "Wrote " << ARegDat << " bytes to file. Register restored." <<std::endl;
-		usleep(500);
-		ARegDat = CC->DelayGateGen(1,0,2,1,5,0,0);   // disable DGG 1
-		if(ARegDat<0) std::cerr<<"failed to diable USB trigger on output 2!" << std::endl;
-		std::cout<<std::endl;
-		std::cout<<"============================"<<std::endl;
-		
-		for (int j = 0; j < 1; j++)
-		{ 
-			for (int i = 0; i < List.CC["ADC"].size(); i++)
-				{
-					int ADCData;
-					//List.CC["ADC"].at(i)->ClearAll();
-					//List.CC["ADC"].at(i)->GetRegister();
-					//List.CC["ADC"].at(i)->PrintRegRaw();   // not implemented for Scaler yet
-					//ADCRead << List.CC["ADC"].at(i)->ReadOut(ADCData, 1);
-					int initTest = List.CC["ADC"].at(i)->InitTest();
-					std::cout << "Your InitTest returned " << initTest << std::endl;
-					/*
-					std::cout << "Your Data: " << ADCData << std::endl;
-					*/
-					List.CC["ADC"].at(i)->EncRegister();
-					List.CC["ADC"].at(i)->PrintRegister();
-					//ADCRead << List.CC["ADC"].at(i)->DumpCompressed(std::map<int, int> &mData);
-					//ADCRead << List.CC["ADC"].at(i)->ReadOut(ADCData, 0) << " ";
-					
-	
-				}
+			// ReadOut behaviour depends on config file. If CSR (camac sequential readout) is set to 1, 
+			// channel input is ignored, all 16 channels are returned by subsequent 'ReadOut' calls.
+			// If CSR = 0, channel input is used. 
+			//int ADCData;
+			//ADCRead << List.CC["ADC"].at(i)->ReadOut(ADCData, 1);
+			//std::cout << "Your Data: " << ADCData << std::endl;
+			
+			// alt method: dump all channels into a map - simply loops over ReadAll calls. Should work with CSR=0 or 1
+			std::map<int, int> ADCvals;
+			List.CC["ADC"].at(i)->DumpAll(ADCvals);
+			for( std::map<int,int>::iterator aval = ADCvals.begin(); aval!=ADCvals.end(); aval++){
+				ADCRead << ", ";
+				ADCRead << aval->second;
+				std::cout<<", " << aval->first << "=" <<aval->second;
+				int ADCData;
+				std::cout<<"(" << List.CC["ADC"].at(i)->ReadOut(ADCData, 1) << ")";
+			}
 			ADCRead << std::endl;
+			std::cout<<std::endl;
 		}
-
+		ADCRead << std::endl;
 		
 		usleep(1000000);
 	}
+	std::cout<<"closing file"<<std::endl;
 	ADCRead.close();	
 	
 	/*
@@ -367,6 +368,7 @@ int main(int argc, char* argv[]){
 	////////////End of Scrambled Egg Code part 2////////////
 	data.close();//close data file*/
 
+	std::cout<<"cleanup"<<std::endl;
 	Lcard.clear();
 	Ncard.clear();
 	Data.ch.clear();
@@ -387,16 +389,16 @@ CamacCrate* Create(std::string cardname, std::string config, int cardslot)
 //	  std::cout<<"TDC"<<std::endl;
 //		ccp = new Lecroy3377(cardslot, config);
 //	}
-	std::cout<<"cardname is "<<cardname<<", comp with 'ADC' is " << (cardname=="ADC") <<std::endl;
-	std::cout<<"strcmp is = "<<strcmp(cardname.c_str(),"ADC") << std::endl;
+	//std::cout<<"cardname is "<<cardname<<", comp with 'ADC' is " << (cardname=="ADC") <<std::endl;
+	//std::cout<<"strcmp is = "<<strcmp(cardname.c_str(),"ADC") << std::endl;
 	if (cardname == "ADC")
 	{
-		std::cout<<"ADC"<<std::endl;
-		ccp = new Lecroy4300b(cardslot, config);
+		//std::cout<<"ADC"<<std::endl;
+		ccp = new Lecroy4300b(cardslot, config);//FIXME 
 	}
 	else if (cardname == "SCA")
 	{
-	  std::cout<<"SCA"<<std::endl;
+		//std::cout<<"SCA"<<std::endl;
 		ccp = new Jorway85A(cardslot, config);
 	}
 	else
@@ -405,5 +407,4 @@ CamacCrate* Create(std::string cardname, std::string config, int cardslot)
 	}
 	return ccp;
 }
-
 

@@ -14,7 +14,8 @@ include/Camac:
 	@cp UserTools/camacinc/XXUSB/usb.h include/
 
 lib/Camac:
-	@cp UserTools/camacinc/makelib/libxx_usb.so lib/
+#	@cp UserTools/camacinc/makelib/libxx_usb.so lib/
+#	@cp UserTools/camacinc/XXUSB/libxx_usb.so lib/
 	g++ $(CXXFLAGS) -shared -fPIC UserTools/camacinc/CamacCrate/CamacCrate.cpp -I include -L lib -o lib/libCC.so
 #	g++ $(CXXFLAGS) -shared -fPIC UserTools/camacinc/Lecroy3377/Lecroy3377.cpp -I include -L lib -o lib/libL3.so
 	g++ $(CXXFLAGS) -shared -fPIC UserTools/camacinc/Lecroy4300b/Lecroy4300b.cpp -I include -L lib -o lib/libL4.so

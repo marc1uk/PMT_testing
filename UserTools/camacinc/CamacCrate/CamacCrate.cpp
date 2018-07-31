@@ -9,11 +9,11 @@ std::vector<int> CamacCrate::Slot;
 
 CamacCrate::CamacCrate(int i)	//Class constructor
 {
-  	std::cout<<"c1" << " open " << CamacCrate::IsOpen <<std::endl;
+  	//std::cout<<"c1 open = " << CamacCrate::IsOpen <<std::endl;
 	if (!CamacCrate::IsOpen) {
 	    Init(i);
 	}
-	else std::cout << "\nWarning: USB device has already been opened\n\n";
+	//else std::cout << "\nWarning: USB device has already been opened\n\n";   // FIXME how are you supposed to do it?
 }
 
 CamacCrate::~CamacCrate()		//Class destructor
@@ -281,7 +281,7 @@ int CamacCrate::BittoInt(std::bitset<16> &bitref, int a, int b)
 *
 *Added by M Calle
 */
-short CamacCrate::DelayGateGen(short chan, short trig, short out, short delay, short gate, short invert, short latch)//Produces A NIM gate signal outputted from A front panel channel
+short CamacCrate::DelayGateGen(short chan, short trig, short out, int delay, int gate, short invert, short latch)//Produces A NIM gate signal outputted from A front panel channel
 {
 	return CAMAC_DGG(Mudev, chan, trig, out, delay, gate, invert, latch);	
 }
@@ -297,13 +297,19 @@ short CamacCrate::CC_NIM_Out(short A, short F, short inv, short latch)//Controls
 {
 	return CAMAC_Output_settings(Mudev, A, F, inv, latch);
 }
-int CamacCrate::ActionRegWrite(long value)
+short CamacCrate::ActionRegWrite(long value)
 {
 	//Writes data to the action register. Should return number of bytes written to register if successful
 	//If not successful, returns a -ve number.
 	//value |= (1u << 1); //hopefully changes the value of the second bit to 1
 	return xxusb_register_write(Mudev, 1, value);//Action register is only option, address of AR is 1
 }
-int CamacCrate::ActionRegRead(long &Data){
-	return xxusb_register_read(Mudev, 1, &Data);
+short CamacCrate::ActionRegRead(long &Data){
+	short actionregaddr = 0;
+	long databuffer=0;
+	long* databufferp = &databuffer;
+	short numbytes =  xxusb_register_read(Mudev, actionregaddr, databufferp);
+	Data=databuffer;
+	return numbytes;
+	//return xxusb_register_read(Mudev, 1, &Data);
 }
