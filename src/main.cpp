@@ -249,7 +249,7 @@ int main(int argc, char* argv[]){
 	SetRegBits(CC,4,8,2,true);   // set bits 8-9 on
 	SetRegBits(CC,4,10,1,false); // set bit 10 off
 	SetRegBits(CC,4,12,2,false); // set bits 12 and 13 off
-	usleep(1000);
+	usleep(100000);
 	
 	//10. FIRE TORPEDOS: write action register: just to test
 	//for(int fires=0; fires<3; fires++){
@@ -266,10 +266,13 @@ int main(int argc, char* argv[]){
 		// Clear all ADCs
 		std::cout<<"clearing ADCs"<<std::endl;
 		for (int i = 0; i < List.CC["ADC"].size(); i++)	{ List.CC["ADC"].at(i)->ClearAll(); }
+		usleep(300000);
 		
 		// Fire LED! (and gate ADCs)
 		std::cout<<"Firing LEDs"<<std::endl;
-		CC->ActionRegWrite(RegActivated);
+		//CC->ActionRegWrite(RegActivated);
+		int test_start_success = List.CC["ADC"].at(0)->InitTest();
+		std::cout<<"test start success = "<<test_start_success<<std::endl;
 		
 		// Put timestamp in file
 		std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
@@ -293,7 +296,7 @@ int main(int argc, char* argv[]){
 			
 			// alt method: dump all channels into a map - simply loops over ReadAll calls. Should work with CSR=0 or 1
 			std::map<int, int> ADCvals;
-			List.CC["ADC"].at(i)->DumpAll(ADCvals);
+			List.CC["ADC"].at(i)->GetData(ADCvals);   //DumpAll(ADCvals);
 			for( std::map<int,int>::iterator aval = ADCvals.begin(); aval!=ADCvals.end(); aval++){
 				ADCRead << ", ";
 				ADCRead << aval->second;

@@ -15,12 +15,27 @@ Lecroy4300b::Lecroy4300b(int NSlot, std::string config, int i) : CamacCrate(i)
 int Lecroy4300b::GetData(std::map<int, int> &mData) 
 {
 	int ret = 0;
+	int reads=0;
+
+	unsigned long start_ms = clock();
+	unsigned long curr_ms = start_ms;
+	unsigned long timeout_ms=5000;
+	std::cout<<std::endl;
+	while ((curr_ms-start_ms)<timeout_ms){
+		int havelam = TestLAM();
+		if(havelam<0){ std::cerr<<"TestLAM error"<<std::endl; break; } // read error 
+		else if(havelam==1){ break; } // data is ready
+		else curr_ms = clock();      // else read success but data still not ready
+		usleep(100); // don't poll *too* often
+	}
 
 	while (TestLAM())
 	{
 		if (ECE || CCE) ret = DumpCompressed(mData);
 		else ret = DumpAll(mData);
+		reads++;
 	}
+	std::cout<<"reads performed: "<<reads<<std::endl;
 	return ret;
 }
 
@@ -134,6 +149,7 @@ int Lecroy4300b::DumpCompressed(std::map<int, int> &mData)
 			ret = ReadOut(Data);
 			ParseCompData(Word, Data, Chan, Head);
 			mData[Chan] = Data;
+			std::cout<<"DumpCompressed["<<i<<"]="<<Data<<std::endl;
 		}
 		return mData.size();
 	}
@@ -148,6 +164,7 @@ int Lecroy4300b::DumpAll(std::map<int, int> &mData)
 	{
 		ret = ReadOut(Data, i);
 		mData[i] = Data;
+		std::cout<<"DumpAll["<<i<<"]="<<Data<<std::endl;
 	}
 	return ret * mData.size();
 }
