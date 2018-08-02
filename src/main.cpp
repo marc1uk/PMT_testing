@@ -1,6 +1,7 @@
 /* vim:set noexpandtab tabstop=4 wrap */
 #include "CamacCrate.h"
-#include "CAENC117B.h"
+//#include "CAENC117B.h"
+#include "my_Caen_C117B.h"
 //#include "Lecroy3377.h"
 //#include "Lecroy4300b.h"
 #include "Jorway85A.h"
@@ -149,12 +150,14 @@ int main(int argc, char* argv[]){
 	// MRD branch: LeCroy.cpp - Initialise();
 	//std::cout << "Clearing modules and printing the registers" << std::endl;
 
+	/*
 	for (int i = 0; i < List.CC[DC].size(); i++)
 	{
 		List.CC[DC].at(i)->ClearAll();
 		//List.CC[DC].at(i)->GetRegister();   // not implemented for Scaler yet
 		//List.CC[DC].at(i)->PrintRegRaw();   // not implemented for Scaler yet
 	}
+	*/
 	
 	// Execute: MAIN LOOP
 	//for (int loopi=0; loopi<10; loopi++){
@@ -227,13 +230,12 @@ int main(int argc, char* argv[]){
 		}
 */
 		int ret_test;
-		for (int i_test=0;i_test<15	;i_test++){
+		for (int i_test=0; i_test<15; i_test++){
 			ret_test=List.CC["CAEN"].at(caen_pos)->TestOperation(i_test);
 		}
 	//	int ret_lam = List.CC["CAEN"].at(caen_pos)->EnLAM();
 	//	ret_lam = List.CC["CAEN"].at(caen_pos)->EnLAM();
 	//	std::cout << List.CC["CAEN"].at(caen_pos)->TestLAM()<<std::endl;
-
 		
 	//}  // end ToolAnalysis Execute / for loop
 	
