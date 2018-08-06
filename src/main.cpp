@@ -92,6 +92,7 @@ int main(int argc, char* argv[]){
 	
 	// Create card objects based on configuration read from file
 	////////////////////////////////////////////////////////////
+	int trg_pos=0;
 	std::cout << "begin scan over " <<Lcard.size()<< " cards " << std::endl;
 	for (int i = 0; i < Lcard.size(); i++){
 		if (Lcard.at(i) == "TDC" || Lcard.at(i) == "ADC" || Lcard.at(i) == "SCA")

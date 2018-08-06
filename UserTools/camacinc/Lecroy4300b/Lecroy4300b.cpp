@@ -1,4 +1,5 @@
 #include "Lecroy4300b.h"
+#include <unistd.h>
 
 Lecroy4300b::Lecroy4300b(int NSlot, std::string config, int i) : CamacCrate(i)
 {
