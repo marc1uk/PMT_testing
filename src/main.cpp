@@ -1,8 +1,5 @@
-/*
-This Main File Is Mostly For Experimentation, It probably shouldn't be in any final program. If it is, 
-something is probably wrong with the program - Max C
-*/
 /* vim:set noexpandtab tabstop=4 wrap */
+// This Main File Is Mostly For Experimentation, It probably shouldn't be in any final program. If it is, something is probably wrong with the program - Max C
 #include <unistd.h>
 #include "CamacCrate.h"
 //#include "Lecroy3377.h"
@@ -17,46 +14,21 @@ something is probably wrong with the program - Max C
 #include <cstring>
 #include <bitset>
 
-unsigned int masks[] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000, 0x8000, 
-			0x10000, 0x20000, 0x40000, 0x80000, 0x100000, 0x200000, 0x400000, 0x800000, 0x1000000, 0x2000000, 0x4000000, 0x8000000,
-			0x10000000, 0x20000000, 0x40000000, 0x80000000};
-short SetRegBits(CamacCrate* CC, int regnum, int firstbit, int numbits, bool on_or_off){
-	//std::cout<<"setting register "<<regnum<<" bit(s) "<<firstbit;
-	//if(numbits>1) std::cout<<"-"<<(firstbit+numbits-1);
-	//std::cout<<" to "<<on_or_off<<std::endl;
-	
-	long placeholder=0;
-	int myQ, myX;
-	short myret = CC->READ(0,regnum,0,placeholder,myQ, myX);
-	for(int biti=0; biti<numbits; biti++){
-		if(on_or_off){
-			placeholder |= masks[firstbit+biti];
-			//std::cout<<"setting bit "<<firstbit+biti<<" to on via or with mask [" << std::bitset<32>(masks[firstbit+biti]) << "]"<<std::endl;
-		} else {
-			placeholder &= ~masks[firstbit+biti];
-			//std::cout<<"setting bit "<<firstbit+biti<<" to off via and with mask [" << std::bitset<32>(~masks[firstbit+biti]) << "]"<<std::endl;
-		}
-		//placeholder & masks[bitnumber]
-	}
-	//std::cout<<"setting register "<<regnum<<" to ["<<std::bitset<32>(placeholder)<<"]"<<std::endl;
-	myret = CC->WRITE(0,regnum,16,placeholder,myQ,myX);
-	//std::cout<<"register set returned "<<myret<<std::endl;
-	if(myret<0) std::cout<<"OH NO, RETURNED "<<myret<<" WHEN TRYING TO SET REGISTER "<<regnum<<" bit(s) "<<firstbit<<"-"<<(firstbit+numbits-1)<<" to "<<on_or_off<<std::endl;
-	return myret;
-};
-void PrintReg(CamacCrate* CC,int regnum){
-	long placeholder=0;
-	int myQ, myX;
-	short myret = CC->READ(0,regnum,0,placeholder,myQ, myX);
-	std::cout<<"Register "<<regnum<<" is ["<<std::bitset<32>(placeholder)<<"]"<<std::endl;
-}
+unsigned int masks[] = {0x01,       0x02,       0x04,       0x08,
+						0x10,       0x20,       0x40,       0x80,
+						0x100,      0x200,      0x400,      0x800,
+						0x1000,     0x2000,     0x4000,     0x8000,
+						0x10000,    0x20000,    0x40000,    0x80000,
+						0x100000,   0x200000,   0x400000,   0x800000,
+						0x1000000,  0x2000000,  0x4000000,  0x8000000,
+						0x10000000, 0x20000000, 0x40000000, 0x80000000};
 
+short SetRegBits(CamacCrate* CC, int regnum, int firstbit, int numbits, bool on_or_off);
+void PrintReg(CamacCrate* CC,int regnum);
 CamacCrate* Create(std::string cardname, std::string config, int cardslot);
 // see CCDAQ.cpp in ANNIEDAQ:MRD branch for example on using the CAMAC internal stack
 // see CCUSB.cpp in ANNIEDAQ:MRD branch for example on doing Read/Write of LeCroy cards in ToolAnalysis chain
 
-////////////////////////////////////
-// master branch: MRDData.h
 struct Channel          //Bunch of Channel makes Card
 {
 	std::map<int, int> ch;
@@ -74,60 +46,19 @@ struct Module           // One Struct to rule them all, One Struct to find them,
 };
 
 int main(int argc, char* argv[]){
-	///////////////////////////////////////
-	// master branch: CCTrigger.h
 	
-
-
-	////////////Scrambled Egg Part 1 Begins////////////
-	//Open up a new file called data.txt
-	/*std::ofstream data;
-	data.open ("data.txt");
-	//Retrieve the desired number of times for the scaler to be read out
-	int reps;
-	std::cout << "Enter number of scaler readouts\n";
-	std::cin >> reps;
-	std::cout << "\nThe scalers will be read " << reps << " times\n";
-	//Retrieve time (in minutes) between readouts (executed in a for loop)
+	std::string configcc = "configfiles/ModuleConfig";         // card list file;
 	
-	int timeBet;
-	std::cout << "Enter the time (in minutes) between readouts: ";
-	std::cin >> timeBet;
-	std::cout << "There will be " << timeBet << " minutes between readouts.\n";
-	
-	//Initialise a counter for a loop
-	int count = 0;*/
-	
-	////////////End of Scrambled Egg part 1////////////	
-
-
-	std::string configcc;           // Module slots
-	
+	// Declare variables to store the card objects
+	//////////////////////////////////////////////
 	std::vector<std::string> Lcard, Ccard;
 	std::vector<int> Ncard;
-	
 	std::map<std::string, std::vector<CamacCrate*> >::iterator iL;  //Iterates over Module.CC
 	std::vector<CamacCrate*>::iterator iC;                          //Iterates over Module.CC<vector>
+	Module List;                                                    //Data Model for Lecroys
 	
-	////////////////////////////////////
-	// master branch: MRDData.h
-	Module List;                                                   //Data Model for Lecroys
-	bool TRG;                                                      //Trigger?      Activate other tools
-	
-	//////////////////////////////////////
-	// MRD branch: Lecroy.h
-	Channel Data;
-	std::string DC;                                                //Module slots DC is TDC or ADC
-	
-	//////////////////////////////////////
-	// Added by me, for using.
-	int scalervals[4];                                             //Read scaler values into this
-	
-	///////////////////////////////////////
-	// master branch: CCTrigger.cpp - Initialise();
-	// read module configurations
-	configcc = "configfiles/ModuleConfig"; // card list file
-	
+	// read the config file specifying the list of cards
+	////////////////////////////////////////////////////
 	std::ifstream fin (configcc.c_str());
 	std::string Line;
 	std::stringstream ssL;
@@ -156,82 +87,45 @@ int main(int argc, char* argv[]){
 	}
 	fin.close();
 	
-	std::cout << "Number of cards: " << Lcard.size() << std::endl;
+	std::cout << "Number of cards specified in config file: " << Lcard.size() << std::endl;
 	CamacCrate* CC = new CamacCrate;                         // CamacCrate at 0
 	
-	//////////////////////////////////////
-	// Create card object based on configuration read from file
-	
-	int trg_pos = 0;                                            // position of trigger card in list of cards
-	int scaler_pos = -1;
-	int adc_pos = -2;                                           // position of scaler in list of cards
+	// Create card objects based on configuration read from file
+	////////////////////////////////////////////////////////////
 	std::cout << "begin scan over " <<Lcard.size()<< " cards " << std::endl;
-	for (int i = 0; i < Lcard.size(); i++)
-	{
-		if (Lcard.at(i) == "TDC" || Lcard.at(i) == "ADC")
+	for (int i = 0; i < Lcard.size(); i++){
+		if (Lcard.at(i) == "TDC" || Lcard.at(i) == "ADC" || Lcard.at(i) == "SCA")
 		{
-			std::cout << "Creating CamacCrate Object" << std::endl;
+			std::cout << "Creating " << Lcard.at(i) <<" Object" << std::endl;
 			CamacCrate* cardPointer = Create(Lcard.at(i), Ccard.at(i), Ncard.at(i));
-			std::cout << "Successfully Created CamacCrate Object." << std::endl;
-			if (cardPointer == NULL)
-			{
-				std::cerr << "unknown card type " << Lcard.at(i) << std::endl;
+			if (cardPointer == NULL){
+				std::cerr << "failed to create " << Lcard.at(i) << " object" << std::endl;
 				return 0;
-			} 
-			else
-			{
-				//It falls over somewhere around here
-				adc_pos = List.CC["TDC"].size();
-				std::cout << "ADC found, list pos = " << adc_pos << std::endl;
-				List.CC[Lcard.at(i)].push_back(cardPointer);  //They use CC at 0
-				std::cout << "constructed Lecroy 4300b module" << std::endl;
-			}
-			
-		}
-		else if (Lcard.at(i) == "TRG")
-		{
+			};
+			List.CC[Lcard.at(i)].push_back(cardPointer); 
+		} else if (Lcard.at(i) == "TRG") {
 			trg_pos = List.CC["TDC"].size();
-			List.CC["TDC"].push_back(Create("TDC", Ccard.at(i), Ncard.at(i)));              //They use CC at 0
+			List.CC["TDC"].push_back(Create("TDC", Ccard.at(i), Ncard.at(i)));
+		} else {
+			std::cerr << "\n\nUnkown card\n" << std::endl;
+			return 0;
 		}
-		else if (Lcard.at(i) == "SCA")
-		{
-			scaler_pos = List.CC["SCA"].size();    // we only have one scaler anyway
-			std::cout << "scaler found, list pos = " << scaler_pos << std::endl;
-			List.CC["SCA"].push_back(Create("SCA", Ccard.at(i), Ncard.at(i)));               //They use CC at 0
-			std::cout << "constructed Jorway85A module" << std::endl;
-		}
-		else std::cout << "\n\nUnkown card\n" << std::endl;
 	}
 	
-	//std::cout << "Primary scaler is in slot ";
-	//std::cout << List.CC["SCA"].at(scaler_pos)->GetSlot() << std::endl;
-	
-	//////////////////////////////////////
-	// MRD branch: LeCroy.cpp - Initialise();
-	//std::cout << "Clearing modules and printing the registers" << std::endl;
-	
-	//Open File for ADC readouts
-	std::ofstream ADCRead;
-	ADCRead.open ("ADCRead.txt");
-	
-	int repeats=1;
-	std::cout << "Please enter number of writes to the action register: ";
-	std::cin >> repeats;
-	std::cout << std::endl << "There will be " << repeats << " writes\n";
-	
+	// Set up the Wiener CCUSB NIM output 1 to fire on USB trigger
+	// used to trigger NIM DGGs for supplying the gate the QDC and fire the LED
+	////////////////////////////////////////////////////////////////////////////
 	long RegStore;
 	CC->ActionRegRead(RegStore);
-	long RegActivated   = RegStore | 0x02;  // Modify bit 1 of the register to "1" (CCUSB Trigger)
-	long RegDeactivated = RegStore & ~0x02;  // Modify bit 1 to 0 (disabled CCUSB trigger. (De-assert of the USB trigger is actually not needed)
+	long RegActivated   = RegStore | 0x02;   // Modify bit 1 of the register to "1" (CCUSB Trigger)
+	long RegDeactivated = RegStore & ~0x02;  // Modify bit 1 to 0 (disabled CCUSB trigger.
 	
-	CC->C();
-	CC->Z();
+	CC->C();       // clear the crate controller
+	CC->Z();       // initilize the crate controller
 	usleep(1000);
 	
-
-	
 	// Configure CC-USB DGG_A to fire on USB trigger, and output to NIM O1
-	//SetRegBits(CamacCrate* CC, int regnum, int firstbit, int numbits, bool on_or_off)
+	// SetRegBits(CamacCrate* CC, int regnum, int firstbit, int numbits, bool on_or_off)
 	//1. set up Nim out 1 to DGG_A: write register 5 bits 0-2 to 2 (3 for firmware<5 gives no output)
 	SetRegBits(CC,5,0,3,false);    // set bits 0-2 on
 	SetRegBits(CC,5,1,1,true);     // set bit 1 on
@@ -251,26 +145,24 @@ int main(int argc, char* argv[]){
 	SetRegBits(CC,4,12,2,false); // set bits 12 and 13 off
 	usleep(100000);
 	
-	//10. FIRE TORPEDOS: write action register: just to test
-	//for(int fires=0; fires<3; fires++){
-	//	CC->ActionRegWrite(RegActivated);
-	//	usleep(1000000);
-	//}
-	List.CC["ADC"].at(0)->GetPedestal();
-	// Fire the LEDs and read the Lecroys to measure the pulse integral
-	int ARegDat;
-	long ARegRead;
-	for (int i = 0; i < repeats; i++)
-	{
-		//break;
+	
+	//Open file for saving readouts
+	///////////////////////////////
+	std::ofstream ADCRead;
+	ADCRead.open ("ADCRead.txt");
+	
+	// Fire the LEDs (or run Test function) and read the Lecroys to measure the pulse integral
+	//////////////////////////////////////////////////////////////////////////////////////////
+	int numreads=1;
+	for (int i = 0; i < numreads; i++){
 		// Clear all ADCs
-		std::cout<<"clearing ADCs"<<std::endl;
 		for (int i = 0; i < List.CC["ADC"].size(); i++)	{ List.CC["ADC"].at(i)->ClearAll(); }
 		usleep(300000);
 		
-		// Fire LED! (and gate ADCs)
-		std::cout<<"Firing LEDs"<<std::endl;
-		//CC->ActionRegWrite(RegActivated);
+		// Fire LED and gate ADCs
+		//CC->ActionRegWrite(RegActivated); // enable this to use NIM output 1 to fire LED and gate QDC
+		
+		// alt: use the Test function to connect internal gate & supply to charge QDCs
 		int test_start_success = List.CC["ADC"].at(0)->InitTest();
 		std::cout<<"test start success = "<<test_start_success<<std::endl;
 		
@@ -281,108 +173,48 @@ int main(int argc, char* argv[]){
 		std::string timeStamp = ctime(&tt);
 		timeStamp.erase(timeStamp.find_last_not_of(" \t\n\015\014\013")+1);
 		ADCRead << timeStamp;
-		
-		std::cout<<"Appending to file: " << timeStamp;
 			
-		// Read ADC value
+		// Read ADC values
 		for (int i = 0; i < List.CC["ADC"].size(); i++){
-		
-			// ReadOut behaviour depends on config file. If CSR (camac sequential readout) is set to 1, 
-			// channel input is ignored, all 16 channels are returned by subsequent 'ReadOut' calls.
-			// If CSR = 0, channel input is used. 
-			//int ADCData;
-			//ADCRead << List.CC["ADC"].at(i)->ReadOut(ADCData, 1);
-			//std::cout << "Your Data: " << ADCData << std::endl;
+			// Lecroy4300b::ReadOut behaviour depends on config file.
+			// If CSR (camac sequential readout) is set to 1, channel input is ignored, 
+			// and instead all 16 channels are returned by subsequent 'ReadOut' calls.
+			// If CSR = 0, channel input argument is used.
 			
-			// alt method: dump all channels into a map - simply loops over ReadAll calls. Should work with CSR=0 or 1
+			//int ADCData;
+			//for(int chani=0; chani<16; chani++){
+				//List.CC["ADC"].at(i)->ReadOut(ADCData, chani);
+				//ADCRead << ADCData;
+				//std::cout << "ADC "<<i<<" channel " << chani << " = " << ADCData << std::endl;
+			//}
+			
+			// alt method: dump all channels into a map
+			// Should work with CSR=0 or 1
 			std::map<int, int> ADCvals;
-			List.CC["ADC"].at(i)->GetData(ADCvals);   //DumpAll(ADCvals);
-			for( std::map<int,int>::iterator aval = ADCvals.begin(); aval!=ADCvals.end(); aval++){
-				ADCRead << ", ";
-				ADCRead << aval->second;
+			List.CC["ADC"].at(i)->GetData(ADCvals);   //calls DumpAll or DumpCompressed based on CCE
+			for(std::map<int,int>::iterator aval = ADCvals.begin(); aval!=ADCvals.end(); aval++){
+				ADCRead << ", " << aval->second;
 				std::cout<<", " << aval->first << "=" <<aval->second;
 				int ADCData;
 				std::cout<<"(" << List.CC["ADC"].at(i)->ReadOut(ADCData, 1) << ")";
 			}
 			ADCRead << std::endl;
 			std::cout<<std::endl;
-		}
+		} // end loop over ADC cards
 		ADCRead << std::endl;
 		
 		usleep(1000000);
-	}
-	std::cout<<"closing file"<<std::endl;
-	ADCRead.close();	
+	} // end loop over read repeats
 	
-	/*
-	// Execute: MAIN LOOP
-	////////////scrambled egg code part 2////////////
-	for(i=0; i < reps; i++)
-	{
-		std::cout << "Clearing All Scalars" << std::endl;
-
-		for (int i = 0; i < List.CC["SCA"].size(); i++)
-		{
-			List.CC["SCA"].at(i)->ClearAll();
-		}
-		std::cout << "Done" << std::endl;
-		
-		//waiting for one minute
-		std::cout << "Counting" << std::endl;
-		std::this_thread::sleep_for(std::chrono::seconds(60));
-		//Reading the scalars
-		int count2 = timeBet;
-		std::cout << "Reading Scalers and writing to file" << std::endl;
-		int ret = List.CC["SCA"].at(scaler_pos)->ReadAll(scalervals);
-
-		if(not ret < 0){   // need better error checking
-			std::cout << "error reading scalers: response was " << ret << std::endl;
-		} 
-		else {
-			//Need to insert some sort of timestamp here
-			//data << "scaler values were: ";
-			//Get timestamp
-			
-			std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
-			time_t tt;
-			tt = std::chrono::system_clock::to_time_t ( time );
-			std::string timeStamp = ctime(&tt);
-			timeStamp.erase(timeStamp.find_last_not_of(" \t\n\015\014\013")+1);
-			data << timeStamp << ", ";
-			
-			for(int chan=0; chan<4; chan++){
-				double darkRate = double (scalervals[chan]) / 60.;
-				data << darkRate;
-				if(chan<3) data << ", ";
-			}
-			data << std::endl;
-		}
-		std::cout << "Done" << std::endl;
-		//data << "End of Loop " << count << std::endl;
-		//For loop will now wait for user-specified time
-		for(count2; count2 > 0; count2--)
-		{
-			std::cout << "Waiting\n";
-			std::this_thread::sleep_for (std::chrono::seconds(1));
-		}
-	}
-	//Test
-	//std::cout << "Test Channel: " << List.CC["SCA"].at(scaler_pos)->TestChannel(3) << std::endl;
-	////////////End of Scrambled Egg Code part 2////////////
-	data.close();//close data file*/
-
+	// Close file and cleanup
+	/////////////////////////
+	std::cout<<"closing file"<<std::endl;
+	ADCRead.close();
+	
 	std::cout<<"cleanup"<<std::endl;
 	Lcard.clear();
 	Ncard.clear();
-	Data.ch.clear();
 }
-
-////////////////////////////////////
-// DataModel.h
-	
-//	std::vector<CardData*> carddata; 
-//	TriggerData *trigdata;
-	
 
 CamacCrate* Create(std::string cardname, std::string config, int cardslot)
 {
@@ -396,18 +228,50 @@ CamacCrate* Create(std::string cardname, std::string config, int cardslot)
 	//std::cout<<"strcmp is = "<<strcmp(cardname.c_str(),"ADC") << std::endl;
 	if (cardname == "ADC")
 	{
-		//std::cout<<"ADC"<<std::endl;
 		ccp = new Lecroy4300b(cardslot, config);//FIXME 
 	}
 	else if (cardname == "SCA")
 	{
-		//std::cout<<"SCA"<<std::endl;
 		ccp = new Jorway85A(cardslot, config);
 	}
 	else
 	{
-		std::cerr <<"Card type not specified " << cardname << std::endl;
+		std::cerr <<"Card type " << cardname <<" not recognized " << cardname << std::endl;
 	}
 	return ccp;
 }
 
+short SetRegBits(CamacCrate* CC, int regnum, int firstbit, int numbits, bool on_or_off){
+	//std::cout<<"setting register "<<regnum<<" bit(s) "<<firstbit;
+	//if(numbits>1) std::cout<<"-"<<(firstbit+numbits-1);
+	//std::cout<<" to "<<on_or_off<<std::endl;
+	
+	long placeholder=0;
+	int myQ, myX;
+	short myret = CC->READ(0,regnum,0,placeholder,myQ, myX);
+	for(int biti=0; biti<numbits; biti++){
+		if(on_or_off){
+			placeholder |= masks[firstbit+biti];
+			//std::cout<<"setting bit "<<firstbit+biti<<" to on via or with mask ["
+			//         <<std::bitset<32>(masks[firstbit+biti]) << "]"<<std::endl;
+		} else {
+			placeholder &= ~masks[firstbit+biti];
+			//std::cout<<"setting bit "<<firstbit+biti<<" to off via and with mask ["
+			//         << std::bitset<32>(~masks[firstbit+biti]) << "]"<<std::endl;
+		}
+		//placeholder & masks[bitnumber]
+	}
+	//std::cout<<"setting register "<<regnum<<" to ["<<std::bitset<32>(placeholder)<<"]"<<std::endl;
+	myret = CC->WRITE(0,regnum,16,placeholder,myQ,myX);
+	//std::cout<<"register set returned "<<myret<<std::endl;
+	if(myret<0) std::cout<<"OH NO, RETURNED "<<myret<<" WHEN TRYING TO SET REGISTER "<<regnum
+	                     <<" bit(s) "<<firstbit<<"-"<<(firstbit+numbits-1)<<" to "<<on_or_off<<std::endl;
+	return myret;
+};
+
+void PrintReg(CamacCrate* CC,int regnum){
+	long placeholder=0;
+	int myQ, myX;
+	short myret = CC->READ(0,regnum,0,placeholder,myQ, myX);
+	std::cout<<"Register "<<regnum<<" is ["<<std::bitset<32>(placeholder)<<"]"<<std::endl;
+}
