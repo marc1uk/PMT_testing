@@ -16,17 +16,18 @@ int Lecroy4300b::GetData(std::map<int, int> &mData)
 {
 	int ret = 0;
 	int reads=0;
-
+	
 	unsigned long start_ms = clock();
 	unsigned long curr_ms = start_ms;
 	unsigned long timeout_ms=5000;
-	std::cout<<std::endl;
+	//std::cout<<std::endl;
 	while ((curr_ms-start_ms)<timeout_ms){
+		//std::cout<<"curr_ms="<<curr_ms<<", curr_ms-start_ms="<<curr_ms-start_ms<<", timeout_ms="<<timeout_ms<<std::endl;
 		int havelam = TestLAM();
-		if(havelam<0){ std::cerr<<"TestLAM error"<<std::endl; break; } // read error 
-		else if(havelam==1){ break; } // data is ready
-		else curr_ms = clock();      // else read success but data still not ready
-		usleep(100); // don't poll *too* often
+		if(havelam<0){ std::cerr<<"TestLAM error"<<std::endl; break; }         // read error
+		else if(havelam==1){ std::cout<<"LAM raised"<<std::endl; break; }      // data is ready
+		else curr_ms = clock();                                                // else read success but data still not ready
+		usleep(100);                                                           // don't poll *too* often
 	}
 
 	while (TestLAM())
@@ -34,8 +35,10 @@ int Lecroy4300b::GetData(std::map<int, int> &mData)
 		if (ECE || CCE) ret = DumpCompressed(mData);
 		else ret = DumpAll(mData);
 		reads++;
+		if(CSR==0) break; // LAM is automatically cleared on last data read only for sequential readout mode
+		// actually, LAM is cleared on reading last word: DumpAll already has a loop over all 16 channels; looping over LAM is redundant...
 	}
-	std::cout<<"reads performed: "<<reads<<std::endl;
+//	std::cout<<"reads performed: "<<reads<<std::endl;
 	return ret;
 }
 
@@ -51,7 +54,7 @@ int Lecroy4300b::ReadPed(int Ch, int &Data)	//Read pedestal memory (8 bits) for 
 {
 	int Q = 0, X = 0;
 	int ret = READ(Ch, 1, Data, Q, X);
-	std::cout<<Data<<std::endl;
+	//std::cout<<Data<<std::endl;
 	if (ret < 0) return ret;
 
 	else return Q;
@@ -94,6 +97,7 @@ int Lecroy4300b::ClearLAM()		//Test and clear LAM, if present.
 
 int Lecroy4300b::WriteReg(int &Data)	//Write status word register. Q = 1 if BUSY = 0.
 {
+	std::cout<<"writing register "<<Data<<std::endl;
 	int Q = 0, X = 0;
 	int ret = WRITE(0, 16, Data, Q, X);
 	if (ret < 0) return ret;
@@ -125,6 +129,7 @@ int Lecroy4300b::READ(int F, int A, int &Data, int &Q, int &X)	//Generic READ
 {
 	long lData;
 	int ret = CamacCrate::READ(GetID(), F, A, lData, Q, X);
+	//if(F==0&&A==0) std::cout<<"READ(F=0,A=0,Data="<<lData<<",Q="<<Q<<",X="<<X<<"), ret="<<ret<<std::endl;
 	Data = lData;
 	return ret;
 }
@@ -149,7 +154,7 @@ int Lecroy4300b::DumpCompressed(std::map<int, int> &mData)
 			ret = ReadOut(Data);
 			ParseCompData(Word, Data, Chan, Head);
 			mData[Chan] = Data;
-			std::cout<<"DumpCompressed["<<i<<"]="<<Data<<std::endl;
+			//std::cout<<"DumpCompressed["<<i<<"]="<<Data<<std::endl;
 		}
 		return mData.size();
 	}
@@ -164,7 +169,7 @@ int Lecroy4300b::DumpAll(std::map<int, int> &mData)
 	{
 		ret = ReadOut(Data, i);
 		mData[i] = Data;
-		std::cout<<"DumpAll["<<i<<"]="<<Data<<std::endl;
+		//std::cout<<"DumpAll["<<i<<"]="<<Data<<std::endl;
 	}
 	return ret * mData.size();
 }
@@ -204,7 +209,7 @@ void Lecroy4300b::EncRegister()
 	Control = Control << 8;
 	Control += VSN;
 
-	std::cout << "Register is " << std::hex << Control;
+	std::cout << "Register is (hex)" << std::hex << Control;
 	std::cout << std::dec << std::endl;
 }
 
@@ -227,6 +232,8 @@ void Lecroy4300b::PrintRegRaw()
 void Lecroy4300b::PrintRegister()
 {
 //	DecRegister();
+	std::cout<<"Control=(hex)"<<std::hex<<Control<<std::endl;
+	std::cout<<std::dec;
 	std::cout << "[" << GetID() << "] :\t";
 	std::cout << "Lecroy4300b in slot " << GetSlot() << " register control" << std::endl;
 	std::cout << "VSN " << VSN << std::endl;

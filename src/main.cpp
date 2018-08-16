@@ -214,9 +214,9 @@ int main(int argc, char* argv[]){
 	std::ofstream ADCRead;
 	ADCRead.open ("ADCRead.txt");
 	
-	int repeats=1;
+	int repeats=3;
 	std::cout << "Please enter number of writes to the action register: ";
-	std::cin >> repeats;
+	//std::cin >> repeats;
 	std::cout << std::endl << "There will be " << repeats << " writes\n";
 	
 	long RegStore;
@@ -225,7 +225,7 @@ int main(int argc, char* argv[]){
 	long RegDeactivated = RegStore & ~0x02;  // Modify bit 1 to 0 (disabled CCUSB trigger. (De-assert of the USB trigger is actually not needed)
 	
 	CC->C();
-	CC->Z();
+	//CC->Z(); // this calls Z (initialize) ON ALL CARDS AS WELL. THIS WILL RESET REGISTER SETTINGS OF THE QDCS, REQUIRING RECONFIGURATION!
 	usleep(1000);
 	
 
@@ -256,23 +256,81 @@ int main(int argc, char* argv[]){
 	//	CC->ActionRegWrite(RegActivated);
 	//	usleep(1000000);
 	//}
-	List.CC["ADC"].at(0)->GetPedestal();
 	// Fire the LEDs and read the Lecroys to measure the pulse integral
+	
+	// Print register settings to check the QDCs are configured properly
+	//List.CC["ADC"].at(0)->GetRegister();             // read from the card into Control member
+	//List.CC["ADC"].at(0)->DecRegister();             // decode 'Control' member into ECL, CLE etc. members
+	//List.CC["ADC"].at(0)->PrintRegister();           // print ECL, CLE etc members
+	//List.CC["ADC"].at(0)->GetPedestal();             // retrieve pedastals into Ped member
+	//List.CC["ADC"].at(0)->PrintPedestal();           // print out pedestals
+	
+	int command_ok;
 	int ARegDat;
 	long ARegRead;
+	// Execute: MAIN LOOP
 	for (int i = 0; i < repeats; i++)
 	{
 		//break;
-		// Clear all ADCs
-		std::cout<<"clearing ADCs"<<std::endl;
-		for (int i = 0; i < List.CC["ADC"].size(); i++)	{ List.CC["ADC"].at(i)->ClearAll(); }
-		usleep(300000);
 		
+/*
+		// NECESSARY AFTER Z() IS CALLED
+		// =============================
+		// step 0: initialize the card
+		std::cout<<"Initializing 4300B"<<std::endl;
+		command_ok = List.CC["ADC"].at(0)->Z();
+		if(command_ok<0) std::cerr<<"4300B::Z() ret<0. Whatever that means"<<std::endl;
+		usleep(1000); // sleep 1ms, and rest
+		std::cout<<"Printing intialized register - expect top 7 bits to be '1'"<<std::endl;
+		// check the initialize worked: bits 9-15 should be set to 1 by a Z() command 
+		List.CC["ADC"].at(0)->GetRegister();  // so check it's set as expected;
+		List.CC["ADC"].at(0)->DecRegister();
+		List.CC["ADC"].at(0)->PrintRegister();
+		
+		// step 1: setup register
+		std::cout<<"configuring 4300B from file "<<Ccard.at(1)<<std::endl;
+		List.CC["ADC"].at(0)->SetConfig(Ccard.at(1));    // load ECL, CLE etc. members with desired configuration
+		List.CC["ADC"].at(0)->EncRegister();             // encode ECL, CLE etc into Control member
+		std::cout<<"Writing following register contents"<<std::endl;
+		List.CC["ADC"].at(0)->PrintRegister();           // print ECL, CLE etc members
+		List.CC["ADC"].at(0)->SetRegister();             // write Control member to the card
+		usleep(1000);
+		std::cout<<"Read back the following register contents"<<std::endl;
+		List.CC["ADC"].at(0)->GetRegister();             // read from the card into Control member
+		List.CC["ADC"].at(0)->DecRegister();             // decode 'Control' member into ECL, CLE etc. members
+		List.CC["ADC"].at(0)->PrintRegister();           // print ECL, CLE etc members
+		usleep(1000); // sleep 1ms, and rest 
+*/
+		
+		// step 2: clear the module to prep for test
+		//std::cout<<"clearing ADCs"<<std::endl;
+		for (int i = 0; i < List.CC["ADC"].size(); i++){
+			command_ok = List.CC["ADC"].at(i)->ClearAll(); // Lecroy:4300b::C() also works
+			std::cout<<"Clear module " << i <<": " << ((command_ok) ? "OK" : "FAILED") << std::endl;
+		}
+		usleep(1000);
+
 		// Fire LED! (and gate ADCs)
 		std::cout<<"Firing LEDs"<<std::endl;
 		//CC->ActionRegWrite(RegActivated);
-		int test_start_success = List.CC["ADC"].at(0)->InitTest();
-		std::cout<<"test start success = "<<test_start_success<<std::endl;
+		// alternatively, run the test, which connects internal charge generator and pulses the gate
+		for (int i = 0; i < List.CC["ADC"].size(); i++){
+			command_ok = List.CC["ADC"].at(0)->InitTest();
+			std::cout<<"test start "<< ((command_ok) ? "OK" : "FAILED") << std::endl;
+		}
+		//for(int sleeps=0; sleeps<500; sleeps++)
+		usleep(1000);
+	
+		for(int numchecks=0; numchecks<5000; numchecks++){
+			// now check for the 'busy' signal?
+			int statusreg=0, busy=0, funcok=0;
+			command_ok = List.CC["ADC"].at(0)->READ(0, 0, statusreg, busy, funcok);  // F=0, A=0, N=slot (implicit)
+			if(not funcok) std::cerr<<"X=0, Function 0 (read register) not recognised??"<<std::endl;
+			//if(not statusreg) std::cerr<<"Status register = "<<statusreg<<", Camac LAM should at least be valid"<<std::endl;  // register contents are 0 when BUSY
+			if(command_ok<0) std::cerr<<"ret<0. Whatever that means"<<std::endl;
+			if(not busy){ std::cout<<"Q=0; BUSY is ON!"<<std::endl; usleep(1000); break; }
+			else usleep(1000); // sleep 10us, and rest 
+		}
 		
 		// Put timestamp in file
 		std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
@@ -282,95 +340,47 @@ int main(int argc, char* argv[]){
 		timeStamp.erase(timeStamp.find_last_not_of(" \t\n\015\014\013")+1);
 		ADCRead << timeStamp;
 		
-		std::cout<<"Appending to file: " << timeStamp;
+		std::cout<<"Appending to file: " << timeStamp<<std::endl;
 			
-		// Read ADC value
+		// Read ADC values
 		for (int i = 0; i < List.CC["ADC"].size(); i++){
-		
 			// ReadOut behaviour depends on config file. If CSR (camac sequential readout) is set to 1, 
 			// channel input is ignored, all 16 channels are returned by subsequent 'ReadOut' calls.
-			// If CSR = 0, channel input is used. 
-			//int ADCData;
-			//ADCRead << List.CC["ADC"].at(i)->ReadOut(ADCData, 1);
-			//std::cout << "Your Data: " << ADCData << std::endl;
-			
-			// alt method: dump all channels into a map - simply loops over ReadAll calls. Should work with CSR=0 or 1
+			// Otherwise if CSR = 0, channel input is used. 
+			// Or: dump all channels into a map - simply loops over ReadAll calls. Should work with CSR=0 or 1
+			//std::cout<<"reading ADCvals"<<std::endl;
 			std::map<int, int> ADCvals;
-			List.CC["ADC"].at(i)->GetData(ADCvals);   //DumpAll(ADCvals);
+/*
+			// this code works!
+			for(int channeli=0; channeli<16; channeli++){
+				int statusreg=0, busy=0, funcok=0;
+				//:READ(int A, int F, int &Data, int &Q, int &X)
+				std::cout<<"Reading channel "<<channeli<<std::endl;
+				command_ok = List.CC["ADC"].at(0)->READ(channeli, 2, statusreg, busy, funcok);  // F=2, A=channeli
+				if(not funcok) std::cerr<<"X=0, Function 0 (read register) not recognised??"<<std::endl;
+				if(not statusreg) std::cerr<<"Data = 0. :("<<std::endl; else std::cout<<"SUCCESS: DATA["<<channeli<<"] = "<<statusreg<<std::endl;
+				if(command_ok<0) std::cerr<<"ret<0. Whatever that means"<<std::endl;
+				if(not busy){ std::cout<<"Q=0; No Data?"<<std::endl; usleep(1000); }
+			}
+*/
+			// so does this
+			List.CC["ADC"].at(i)->GetData(ADCvals);   // GetData calls DumpAll(ADCvals); or DumpCompressed based on register settings, includes waiting for LAM
 			for( std::map<int,int>::iterator aval = ADCvals.begin(); aval!=ADCvals.end(); aval++){
 				ADCRead << ", ";
+				if(aval!=ADCvals.begin()) std::cout<<", ";
 				ADCRead << aval->second;
-				std::cout<<", " << aval->first << "=" <<aval->second;
-				int ADCData;
-				std::cout<<"(" << List.CC["ADC"].at(i)->ReadOut(ADCData, 1) << ")";
+				std::cout << aval->first << "=" << aval->second;
 			}
 			ADCRead << std::endl;
 			std::cout<<std::endl;
 		}
 		ADCRead << std::endl;
 		
-		usleep(1000000);
+		usleep(1000);
 	}
 	std::cout<<"closing file"<<std::endl;
 	ADCRead.close();	
 	
-	/*
-	// Execute: MAIN LOOP
-	////////////scrambled egg code part 2////////////
-	for(i=0; i < reps; i++)
-	{
-		std::cout << "Clearing All Scalars" << std::endl;
-
-		for (int i = 0; i < List.CC["SCA"].size(); i++)
-		{
-			List.CC["SCA"].at(i)->ClearAll();
-		}
-		std::cout << "Done" << std::endl;
-		
-		//waiting for one minute
-		std::cout << "Counting" << std::endl;
-		std::this_thread::sleep_for(std::chrono::seconds(60));
-		//Reading the scalars
-		int count2 = timeBet;
-		std::cout << "Reading Scalers and writing to file" << std::endl;
-		int ret = List.CC["SCA"].at(scaler_pos)->ReadAll(scalervals);
-
-		if(not ret < 0){   // need better error checking
-			std::cout << "error reading scalers: response was " << ret << std::endl;
-		} 
-		else {
-			//Need to insert some sort of timestamp here
-			//data << "scaler values were: ";
-			//Get timestamp
-			
-			std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
-			time_t tt;
-			tt = std::chrono::system_clock::to_time_t ( time );
-			std::string timeStamp = ctime(&tt);
-			timeStamp.erase(timeStamp.find_last_not_of(" \t\n\015\014\013")+1);
-			data << timeStamp << ", ";
-			
-			for(int chan=0; chan<4; chan++){
-				double darkRate = double (scalervals[chan]) / 60.;
-				data << darkRate;
-				if(chan<3) data << ", ";
-			}
-			data << std::endl;
-		}
-		std::cout << "Done" << std::endl;
-		//data << "End of Loop " << count << std::endl;
-		//For loop will now wait for user-specified time
-		for(count2; count2 > 0; count2--)
-		{
-			std::cout << "Waiting\n";
-			std::this_thread::sleep_for (std::chrono::seconds(1));
-		}
-	}
-	//Test
-	//std::cout << "Test Channel: " << List.CC["SCA"].at(scaler_pos)->TestChannel(3) << std::endl;
-	////////////End of Scrambled Egg Code part 2////////////
-	data.close();//close data file*/
-
 	std::cout<<"cleanup"<<std::endl;
 	Lcard.clear();
 	Ncard.clear();
