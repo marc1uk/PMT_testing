@@ -21,14 +21,16 @@ int Lecroy4300b::GetData(std::map<int, int> &mData)
 	unsigned long curr_ms = start_ms;
 	unsigned long timeout_ms=5000;
 	//std::cout<<std::endl;
+	bool timedout=true;
 	while ((curr_ms-start_ms)<timeout_ms){
 		//std::cout<<"curr_ms="<<curr_ms<<", curr_ms-start_ms="<<curr_ms-start_ms<<", timeout_ms="<<timeout_ms<<std::endl;
 		int havelam = TestLAM();
-		if(havelam<0){ std::cerr<<"TestLAM error"<<std::endl; break; }         // read error
-		else if(havelam==1){ std::cout<<"LAM raised"<<std::endl; break; }      // data is ready
-		else curr_ms = clock();                                                // else read success but data still not ready
-		usleep(100);                                                           // don't poll *too* often
+		if(havelam<0){ std::cerr<<"TestLAM error"<<std::endl; break; }                             // read error
+		else if(havelam==1){ /*std::cout<<"LAM raised"<<std::endl;*/ timedout=false; break; }      // data is ready
+		else curr_ms = clock();                                                                    // else read success but data still not ready
+		usleep(100);                                                                               // don't poll *too* often
 	}
+	if(timedout) std::cerr << "Lecroy4300b::GetData() timed out on slot " << GetSlot() << std::endl; 
 
 	while (TestLAM())
 	{

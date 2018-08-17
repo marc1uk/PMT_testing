@@ -212,9 +212,9 @@ int main(int argc, char* argv[]){
 	
 	//Open File for ADC readouts
 	std::ofstream ADCRead;
-	ADCRead.open ("ADCRead.txt");
+	ADCRead.open ("QDC_Vals_0V.txt");
 	
-	int repeats=3;
+	int repeats=10;
 	std::cout << "Please enter number of writes to the action register: ";
 	//std::cin >> repeats;
 	std::cout << std::endl << "There will be " << repeats << " writes\n";
@@ -226,9 +226,7 @@ int main(int argc, char* argv[]){
 	
 	CC->C();
 	//CC->Z(); // this calls Z (initialize) ON ALL CARDS AS WELL. THIS WILL RESET REGISTER SETTINGS OF THE QDCS, REQUIRING RECONFIGURATION!
-	usleep(1000);
-	
-
+	usleep(100);
 	
 	// Configure CC-USB DGG_A to fire on USB trigger, and output to NIM O1
 	//SetRegBits(CamacCrate* CC, int regnum, int firstbit, int numbits, bool on_or_off)
@@ -249,7 +247,7 @@ int main(int argc, char* argv[]){
 	SetRegBits(CC,4,8,2,true);   // set bits 8-9 on
 	SetRegBits(CC,4,10,1,false); // set bit 10 off
 	SetRegBits(CC,4,12,2,false); // set bits 12 and 13 off
-	usleep(100000);
+	usleep(1000);
 	
 	//10. FIRE TORPEDOS: write action register: just to test
 	//for(int fires=0; fires<3; fires++){
@@ -262,6 +260,8 @@ int main(int argc, char* argv[]){
 	//List.CC["ADC"].at(0)->GetRegister();             // read from the card into Control member
 	//List.CC["ADC"].at(0)->DecRegister();             // decode 'Control' member into ECL, CLE etc. members
 	//List.CC["ADC"].at(0)->PrintRegister();           // print ECL, CLE etc members
+	//List.CC["ADC"].at(0)->PrintPedestal();           // print out pedestals		
+	//List.CC["ADC"].at(0)->SetPedestal();
 	//List.CC["ADC"].at(0)->GetPedestal();             // retrieve pedastals into Ped member
 	//List.CC["ADC"].at(0)->PrintPedestal();           // print out pedestals
 	
@@ -269,14 +269,15 @@ int main(int argc, char* argv[]){
 	int ARegDat;
 	long ARegRead;
 	// Execute: MAIN LOOP
+	repeats=10000000;
 	for (int i = 0; i < repeats; i++)
 	{
 		//break;
 		
-/*
 		// NECESSARY AFTER Z() IS CALLED
 		// =============================
 		// step 0: initialize the card
+/*
 		std::cout<<"Initializing 4300B"<<std::endl;
 		command_ok = List.CC["ADC"].at(0)->Z();
 		if(command_ok<0) std::cerr<<"4300B::Z() ret<0. Whatever that means"<<std::endl;
@@ -306,30 +307,40 @@ int main(int argc, char* argv[]){
 		//std::cout<<"clearing ADCs"<<std::endl;
 		for (int i = 0; i < List.CC["ADC"].size(); i++){
 			command_ok = List.CC["ADC"].at(i)->ClearAll(); // Lecroy:4300b::C() also works
-			std::cout<<"Clear module " << i <<": " << ((command_ok) ? "OK" : "FAILED") << std::endl;
+			//std::cout<<"Clear module " << i <<": " << ((command_ok) ? "OK" : "FAILED") << std::endl;
 		}
-		usleep(1000);
-
-		// Fire LED! (and gate ADCs)
-		std::cout<<"Firing LEDs"<<std::endl;
-		//CC->ActionRegWrite(RegActivated);
-		// alternatively, run the test, which connects internal charge generator and pulses the gate
+		usleep(100);
+		
+		
 		for (int i = 0; i < List.CC["ADC"].size(); i++){
-			command_ok = List.CC["ADC"].at(0)->InitTest();
-			std::cout<<"test start "<< ((command_ok) ? "OK" : "FAILED") << std::endl;
+			// Fire LED! (and gate ADCs)
+			command_ok = CC->ActionRegWrite(RegActivated);
+			std::cout<<"Firing LED " << ((command_ok) ? "OK" : "FAILED") << std::endl;
+			// alternatively, run the test, which connects internal charge generator and pulses the gate
+			//command_ok = List.CC["ADC"].at(i)->InitTest();
+			//std::cout<<"test start "<<i<<" " << ((command_ok) ? "OK" : "FAILED") << std::endl;
 		}
 		//for(int sleeps=0; sleeps<500; sleeps++)
-		usleep(1000);
-	
-		for(int numchecks=0; numchecks<5000; numchecks++){
-			// now check for the 'busy' signal?
-			int statusreg=0, busy=0, funcok=0;
-			command_ok = List.CC["ADC"].at(0)->READ(0, 0, statusreg, busy, funcok);  // F=0, A=0, N=slot (implicit)
-			if(not funcok) std::cerr<<"X=0, Function 0 (read register) not recognised??"<<std::endl;
-			//if(not statusreg) std::cerr<<"Status register = "<<statusreg<<", Camac LAM should at least be valid"<<std::endl;  // register contents are 0 when BUSY
-			if(command_ok<0) std::cerr<<"ret<0. Whatever that means"<<std::endl;
-			if(not busy){ std::cout<<"Q=0; BUSY is ON!"<<std::endl; usleep(1000); break; }
-			else usleep(1000); // sleep 10us, and rest 
+		usleep(100);
+
+		for (int i = 0; i < List.CC["ADC"].size(); i++){
+			int numchecks=1;
+			int statusreglast=0;
+			for(int checknum=0; checknum<numchecks; checknum++){
+				// now check for the 'busy' signal?
+				int statusreg=0, busy=0, funcok=0;
+				command_ok = List.CC["ADC"].at(i)->READ(0, 0, statusreg, busy, funcok);  // F=0, A=0, N=slot (implicit)
+				if(not funcok) std::cerr<<"X=0, Function 0 (read register) not recognised??"<<std::endl;
+				//if(not statusreg) std::cerr<<"Status register = "<<statusreg<<", Camac LAM should at least be valid"<<std::endl;  // register contents are 0 when BUSY
+				if(command_ok<0) std::cerr<<"ret<0. Whatever that means"<<std::endl;
+				if(not busy){ /*std::cout<<"Q=0; BUSY is ON!"<<std::endl;*/ break; }
+				else if(checknum==numchecks-1){ std::cerr<<"ADC "<<i<< " BUSY was not raised following Gate / InitTest?" << std::endl; }
+				else {
+					//if(statusreg!=statusreglast) std::cout<<"status reg: Q=1, register = " << statusreg << "("<< std::bitset<16>(statusreg) << ")" << std::endl;
+					//statusreglast=statusreg;
+					usleep(100);
+				} // sleep 10us
+			}
 		}
 		
 		// Put timestamp in file
@@ -340,10 +351,15 @@ int main(int argc, char* argv[]){
 		timeStamp.erase(timeStamp.find_last_not_of(" \t\n\015\014\013")+1);
 		ADCRead << timeStamp;
 		
-		std::cout<<"Appending to file: " << timeStamp<<std::endl;
-			
+		//std::cout<<"Reading ADCvals at " << timeStamp<<std::endl;
+
 		// Read ADC values
 		for (int i = 0; i < List.CC["ADC"].size(); i++){
+			//List.CC["ADC"].at(i)->PrintRegister();			
+			//List.CC["ADC"].at(i)->GetRegister();
+			//List.CC["ADC"].at(i)->DecodeRegister();
+			//List.CC["ADC"].at(i)->PrintRegister();
+			//List.CC["ADC"].at(i)->PrintPedestal(); 	
 			// ReadOut behaviour depends on config file. If CSR (camac sequential readout) is set to 1, 
 			// channel input is ignored, all 16 channels are returned by subsequent 'ReadOut' calls.
 			// Otherwise if CSR = 0, channel input is used. 
@@ -356,7 +372,7 @@ int main(int argc, char* argv[]){
 				int statusreg=0, busy=0, funcok=0;
 				//:READ(int A, int F, int &Data, int &Q, int &X)
 				std::cout<<"Reading channel "<<channeli<<std::endl;
-				command_ok = List.CC["ADC"].at(0)->READ(channeli, 2, statusreg, busy, funcok);  // F=2, A=channeli
+				command_ok = List.CC["ADC"].at(i)->READ(channeli, 2, statusreg, busy, funcok);  // F=2, A=channeli
 				if(not funcok) std::cerr<<"X=0, Function 0 (read register) not recognised??"<<std::endl;
 				if(not statusreg) std::cerr<<"Data = 0. :("<<std::endl; else std::cout<<"SUCCESS: DATA["<<channeli<<"] = "<<statusreg<<std::endl;
 				if(command_ok<0) std::cerr<<"ret<0. Whatever that means"<<std::endl;
@@ -365,17 +381,18 @@ int main(int argc, char* argv[]){
 */
 			// so does this
 			List.CC["ADC"].at(i)->GetData(ADCvals);   // GetData calls DumpAll(ADCvals); or DumpCompressed based on register settings, includes waiting for LAM
+			if(ADCvals.size()==0){ std::cerr<<"ADC "<<i<< " GetData returned no measurements!"<<std::endl; }
 			for( std::map<int,int>::iterator aval = ADCvals.begin(); aval!=ADCvals.end(); aval++){
 				ADCRead << ", ";
 				if(aval!=ADCvals.begin()) std::cout<<", ";
 				ADCRead << aval->second;
-				std::cout << aval->first << "=" << aval->second;
+				std::cout << /*aval->first << "=" <<*/ aval->second;
 			}
 			ADCRead << std::endl;
 			std::cout<<std::endl;
 		}
-		ADCRead << std::endl;
-		
+		//ADCRead << std::endl;
+		for(int delayi=0; delayi<100; delayi++)
 		usleep(1000);
 	}
 	std::cout<<"closing file"<<std::endl;
