@@ -12,9 +12,9 @@ OFS	0	#15	Overflow Suppress OFS = 1 suppress overflows in ECE or CCE, OFS = 0 di
 #StartPed
 #133, 0, 0, 1240, 478, 1204, 1070, 1113, 2047, 1436, 0, 2047, 0, 176, 213, 0
 #Chan 	Ped
-0	255 #
+0	0 #
 1	0 #
-2	57 #
+2	0 #
 3	0 #
 4	0 #
 5	0 #
@@ -25,7 +25,7 @@ OFS	0	#15	Overflow Suppress OFS = 1 suppress overflows in ECE or CCE, OFS = 0 di
 10	0 #
 11	0 #
 12	0 #
-13	184 #
-14	231 #
+13	0 #
+14	0 #
 15	0 #
 #EndPed

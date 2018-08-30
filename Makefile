@@ -1,9 +1,12 @@
-CXXFLAGS    = -g -std=c++0x -Wall -Wno-reorder -Wno-sign-compare -Wno-unused-variable -Wno-unused-but-set-variable
+CXXFLAGS    = -g -std=c++0x -Wall -Wno-reorder -Wno-sign-compare -Wno-unused-variable -Wno-unused-but-set-variable 
+
+CPPFLAGS = `root-config --cflags`
+LDFLAGS = `root-config --libs`
 
 all: main
 
 main: include/Camac lib/Camac
-	g++ $(CXXFLAGS) src/main.cpp -o main -I include -L lib -lCC -lm -lxx_usb -lJ8 -lL4 #-lL4 -lm -lxx_usb
+	g++ $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) src/main.cpp -o main -I include -L lib -lCC -lm -lxx_usb -lJ8 -lL4 #-lL4 -lm -lxx_usb
 
 include/Camac:
 	@cp UserTools/camacinc/CamacCrate/CamacCrate.h include/

@@ -17,6 +17,15 @@ something is probably wrong with the program - Max C
 #include <cstring>
 #include <bitset>
 
+#include "TFile.h"
+#include "TTree.h"
+#include "TCanvas.h"
+#include "TH1.h"
+#include "TH2.h"
+
+#include "TApplication.h"
+#include "TSystem.h"
+
 unsigned int masks[] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000, 0x8000, 
 			0x10000, 0x20000, 0x40000, 0x80000, 0x100000, 0x200000, 0x400000, 0x800000, 0x1000000, 0x2000000, 0x4000000, 0x8000000,
 			0x10000000, 0x20000000, 0x40000000, 0x80000000};
@@ -73,11 +82,16 @@ struct Module           // One Struct to rule them all, One Struct to find them,
 	std::map<std::string, std::vector<CamacCrate*> > CC;       //Camac module class
 };
 
+
+
+
 int main(int argc, char* argv[]){
 	///////////////////////////////////////
 	// master branch: CCTrigger.h
 	
-
+	int myargc = 0;
+	char *myargv[] = {(const char*) "somestring"};
+	TApplication *PMTTestStandApp = new TApplication("PMTTestStandApp",&myargc,myargv);
 
 	////////////Scrambled Egg Part 1 Begins////////////
 	//Open up a new file called data.txt
@@ -212,7 +226,7 @@ int main(int argc, char* argv[]){
 	
 	//Open File for ADC readouts
 	std::ofstream ADCRead;
-	ADCRead.open ("QDC_Vals_0V.txt");
+	ADCRead.open ("QDC_Vals_shorter_gate.txt");
 	
 	int repeats=10;
 	std::cout << "Please enter number of writes to the action register: ";
@@ -260,7 +274,7 @@ int main(int argc, char* argv[]){
 	//List.CC["ADC"].at(0)->GetRegister();             // read from the card into Control member
 	//List.CC["ADC"].at(0)->DecRegister();             // decode 'Control' member into ECL, CLE etc. members
 	//List.CC["ADC"].at(0)->PrintRegister();           // print ECL, CLE etc members
-	//List.CC["ADC"].at(0)->PrintPedestal();           // print out pedestals		
+	//List.CC["ADC"].at(0)->PrintPedestal();           // print out pedestals
 	//List.CC["ADC"].at(0)->SetPedestal();
 	//List.CC["ADC"].at(0)->GetPedestal();             // retrieve pedastals into Ped member
 	//List.CC["ADC"].at(0)->PrintPedestal();           // print out pedestals
@@ -269,7 +283,10 @@ int main(int argc, char* argv[]){
 	int ARegDat;
 	long ARegRead;
 	// Execute: MAIN LOOP
-	repeats=10000000;
+	repeats=10000;
+	TCanvas* canv = new TCanvas("canv","canv",900,600);
+	canv->cd();
+	TH2D *hist = new TH2D("hist","ADC values : entry",100,0,10000,100,0,100);
 	for (int i = 0; i < repeats; i++)
 	{
 		//break;
@@ -305,31 +322,31 @@ int main(int argc, char* argv[]){
 		
 		// step 2: clear the module to prep for test
 		//std::cout<<"clearing ADCs"<<std::endl;
-		for (int i = 0; i < List.CC["ADC"].size(); i++){
-			command_ok = List.CC["ADC"].at(i)->ClearAll(); // Lecroy:4300b::C() also works
-			//std::cout<<"Clear module " << i <<": " << ((command_ok) ? "OK" : "FAILED") << std::endl;
+		for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
+			command_ok = List.CC["ADC"].at(cardi)->ClearAll(); // Lecroy:4300b::C() also works
+			//std::cout<<"Clear module " << cardi <<": " << ((command_ok) ? "OK" : "FAILED") << std::endl;
 		}
 		usleep(100);
 		
+		// Fire LED! (and gate ADCs)
+		command_ok = CC->ActionRegWrite(RegActivated);
+		std::cout<<"Firing LED " << ((command_ok) ? "OK" : "FAILED") << std::endl;
 		
-		for (int i = 0; i < List.CC["ADC"].size(); i++){
-			// Fire LED! (and gate ADCs)
-			command_ok = CC->ActionRegWrite(RegActivated);
-			std::cout<<"Firing LED " << ((command_ok) ? "OK" : "FAILED") << std::endl;
-			// alternatively, run the test, which connects internal charge generator and pulses the gate
-			//command_ok = List.CC["ADC"].at(i)->InitTest();
+		// alternatively, run the test, which connects internal charge generator and pulses the gate
+		for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
+			//command_ok = List.CC["ADC"].at(cardi)->InitTest();
 			//std::cout<<"test start "<<i<<" " << ((command_ok) ? "OK" : "FAILED") << std::endl;
 		}
 		//for(int sleeps=0; sleeps<500; sleeps++)
 		usleep(100);
 
-		for (int i = 0; i < List.CC["ADC"].size(); i++){
+		for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
 			int numchecks=1;
 			int statusreglast=0;
 			for(int checknum=0; checknum<numchecks; checknum++){
 				// now check for the 'busy' signal?
 				int statusreg=0, busy=0, funcok=0;
-				command_ok = List.CC["ADC"].at(i)->READ(0, 0, statusreg, busy, funcok);  // F=0, A=0, N=slot (implicit)
+				command_ok = List.CC["ADC"].at(cardi)->READ(0, 0, statusreg, busy, funcok);  // F=0, A=0, N=slot (implicit)
 				if(not funcok) std::cerr<<"X=0, Function 0 (read register) not recognised??"<<std::endl;
 				//if(not statusreg) std::cerr<<"Status register = "<<statusreg<<", Camac LAM should at least be valid"<<std::endl;  // register contents are 0 when BUSY
 				if(command_ok<0) std::cerr<<"ret<0. Whatever that means"<<std::endl;
@@ -354,15 +371,15 @@ int main(int argc, char* argv[]){
 		//std::cout<<"Reading ADCvals at " << timeStamp<<std::endl;
 
 		// Read ADC values
-		for (int i = 0; i < List.CC["ADC"].size(); i++){
-			//List.CC["ADC"].at(i)->PrintRegister();			
-			//List.CC["ADC"].at(i)->GetRegister();
-			//List.CC["ADC"].at(i)->DecodeRegister();
-			//List.CC["ADC"].at(i)->PrintRegister();
-			//List.CC["ADC"].at(i)->PrintPedestal(); 	
+		for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
+			//List.CC["ADC"].at(cardi)->PrintRegister();
+			//List.CC["ADC"].at(cardi)->GetRegister();
+			//List.CC["ADC"].at(cardi)->DecodeRegister();
+			//List.CC["ADC"].at(cardi)->PrintRegister();
+			//List.CC["ADC"].at(cardi)->PrintPedestal();
 			// ReadOut behaviour depends on config file. If CSR (camac sequential readout) is set to 1, 
 			// channel input is ignored, all 16 channels are returned by subsequent 'ReadOut' calls.
-			// Otherwise if CSR = 0, channel input is used. 
+			// Otherwise if CSR = 0, channel input is used.
 			// Or: dump all channels into a map - simply loops over ReadAll calls. Should work with CSR=0 or 1
 			//std::cout<<"reading ADCvals"<<std::endl;
 			std::map<int, int> ADCvals;
@@ -372,7 +389,7 @@ int main(int argc, char* argv[]){
 				int statusreg=0, busy=0, funcok=0;
 				//:READ(int A, int F, int &Data, int &Q, int &X)
 				std::cout<<"Reading channel "<<channeli<<std::endl;
-				command_ok = List.CC["ADC"].at(i)->READ(channeli, 2, statusreg, busy, funcok);  // F=2, A=channeli
+				command_ok = List.CC["ADC"].at(cardi)->READ(channeli, 2, statusreg, busy, funcok);  // F=2, A=channeli
 				if(not funcok) std::cerr<<"X=0, Function 0 (read register) not recognised??"<<std::endl;
 				if(not statusreg) std::cerr<<"Data = 0. :("<<std::endl; else std::cout<<"SUCCESS: DATA["<<channeli<<"] = "<<statusreg<<std::endl;
 				if(command_ok<0) std::cerr<<"ret<0. Whatever that means"<<std::endl;
@@ -380,23 +397,31 @@ int main(int argc, char* argv[]){
 			}
 */
 			// so does this
-			List.CC["ADC"].at(i)->GetData(ADCvals);   // GetData calls DumpAll(ADCvals); or DumpCompressed based on register settings, includes waiting for LAM
-			if(ADCvals.size()==0){ std::cerr<<"ADC "<<i<< " GetData returned no measurements!"<<std::endl; }
+			List.CC["ADC"].at(cardi)->GetData(ADCvals);   // GetData calls DumpAll(ADCvals); or DumpCompressed based on register settings, includes waiting for LAM
+			if(ADCvals.size()==0){ std::cerr<<"ADC "<<cardi<< " GetData returned no measurements!"<<std::endl; }
 			for( std::map<int,int>::iterator aval = ADCvals.begin(); aval!=ADCvals.end(); aval++){
 				ADCRead << ", ";
 				if(aval!=ADCvals.begin()) std::cout<<", ";
 				ADCRead << aval->second;
 				std::cout << /*aval->first << "=" <<*/ aval->second;
 			}
+			hist->Fill(i,ADCvals.at(0));
+			if (i%100 ==0) {hist->Draw("colz");
+			canv->Modified();
+			canv->Update();
+			//gSystem->ProcessEvents();
+			}
+			//if ((i%500)==0){TCanvas *c1 = new TCanvas(); hist->Draw("colz");}
 			ADCRead << std::endl;
 			std::cout<<std::endl;
 		}
 		//ADCRead << std::endl;
-		for(int delayi=0; delayi<100; delayi++)
-		usleep(1000);
+		//for(int delayi=0; delayi<100; delayi++)
+		//usleep(1000);
 	}
 	std::cout<<"closing file"<<std::endl;
 	ADCRead.close();	
+	
 	
 	std::cout<<"cleanup"<<std::endl;
 	Lcard.clear();
