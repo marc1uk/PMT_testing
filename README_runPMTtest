@@ -1,0 +1,13 @@
+run_pmt_test.sh is a shell executable which subsequently calls the main routine (to take data), the plot_QDC_histo ROOT macro to create the ROOT Tree structure and the fit_QDC_histo ROOT macro to fit the resulting distributions. The initial mean values for the fit are set according to the measured pedestal values (might need to be adjusted if the pedestals should change at a certain time). The calculated gain is given as an output at the end of the program's execution.
+
+Usage:
+./run_pmt_test.sh channel_number PMT_name
+
+e.g.: ./run_pmt_test.sh 0 LUX3
+for LUX PMT 3 when taking data on channel 0.
+
+output files:
+LUX3_ch0_stability.pdf --> saving the stability plot of the QDC values as a function of the event number
+LUX3_ch0.txt --> data file
+LUX3_ch0.root --> ROOT data file
+LUX3_ch0_fit.pdf --> image of the fit distribution

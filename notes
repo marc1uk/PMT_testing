@@ -1,0 +1,58 @@
+1.  set up Nim output 1 to DGG_A:       write register 5 bits 0-2 to 2
+2.  set up Nim output 2 to DGG_B:       write register 5 bits 8-10 to 3
+3.  set DGG_A source to usb:            write register 6 bits 16-18 to 6
+4.  set DGG_B source to usb:            write register 6 bits 24-26 to 6
+5.  set DGG_A delay to 0ns:             write register 7 bits 0-15 to 0
+6.  set DGG_A gate to 10ns :            write register 7 bit 3 to 1
+7.  set DGG_B delay to 40ns:            write register 8 bits 0-15 to 4
+8.  set DGG_B gate to 160ns:            write register 8 bits 16-31 to 16
+9.  set extended delay on DGG_A to 0:   write register 13 bits 0-15 to 0
+10. set extended delay on DGG_B to 0:   write register 13 bits 16-31 to 0
+11. activate usb trigger:               write action register bit 1 to 1
+
+register 0 is: 0111 0001 00000000 00000001 00000110
+                7     1      0        1        6       = Jul 2001, ver 1.6, beta 0
+
+may also be represented by 4 hex digits: MYFR for revisions < 1.01 => gives M=0, Y=1, F=0, R=6.. not likely
+
+firmware v5 flag is 0
+code is 3
+register 5 reads 000000000000000000000000000000000000000000000000000010100000011
+setting register 5 to 0000000000000000000000000000000000000000000000000000010100000011
+register 0 is: 000000000000000000000000000000001110001000000000000000100000110
+firmware v5 flag is 0
+code is 5
+register 5 reads 000000000000000000000000000000000000000000000000000010100000011
+setting register 5 to 0000000000000000000000000000000000000000000000000000010100000011
+
+
+
+Hello,
+I'm a PhD student working for the ANNIE collaboration, a Fermilab based experiment currently under construction. We have some CC-USB camac controllers which we're trying to use for the moment in a PMT test station. 
+Unfortunately we've been having difficulty getting things working, and would appreciate any support you could offer.
+We're currently trying to configure the two internal DGG outputs to control NIM outputs 1 and 2, triggered on writing to the USB trigger (action register). 
+Unfortunately many of the settings do not seem to be behaving as anticipated in the manual - no output is generated on output 2, the pulse on output 1 does not have the anticipated duration etc. 
+
+Our current configuration steps are as follows:
+1.  set up Nim output 1 to DGG_A:       write register 5 bits 0-2 to 2
+2.  set up Nim output 2 to DGG_B:       write register 5 bits 8-10 to 3
+3.  set DGG_A source to usb:            write register 6 bits 16-18 to 6
+4.  set DGG_B source to usb:            write register 6 bits 24-26 to 6
+5.  set DGG_A delay to 0ns:             write register 7 bits 0-15 to 0
+6.  set DGG_A gate to 655350ns :        write register 7 bit 16-31 to 1
+7.  set DGG_B delay to 40ns:            write register 8 bits 0-15 to 4
+8.  set DGG_B gate to 160ns:            write register 8 bits 16-31 to 16
+9.  set extended delay on DGG_A to 0:   write register 13 bits 0-15 to 0
+10. set green LED to blink on usb trigger: write register 4 bits 8-10=3, 12=0 (invert off), 13=0 (latch off)
+11. set extended delay on DGG_B to 0:   write register 13 bits 16-31 to 0
+12. activate usb trigger:               write action register bit 1 to 1
+
+Currently the NIM output 1 is pulsing, but not with the expected duration, and changing the gate length stops it outputting. NIM output 2 does not pulse at all. The only thing working as expected is the blinking of the green LED on USB trigger. 
+
+Performing Camac_read with F=0, A=0 (read firmware version) returns:
+0111 0001 00000000 00000001 00000110
+I believe the manual says this should be interpreted as Jul '01 beta 0, Major 1, Revision 4, but that doesn't tie up with any firmware versions in the list of versions provided in the documentation. the libxxusb source code combines Major and Revision, giving 262, but this number also doesn't seem to tie up with any version listed. 
+
+We would greatly appreciate any support you could provide. As of present we're rather lost on how to proceed. 
+Regards,
+Marcus

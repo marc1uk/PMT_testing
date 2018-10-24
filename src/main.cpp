@@ -82,16 +82,36 @@ struct Module           // One Struct to rule them all, One Struct to find them,
 	std::map<std::string, std::vector<CamacCrate*> > CC;       //Camac module class
 };
 
-
-
-
 int main(int argc, char* argv[]){
 	///////////////////////////////////////
 	// master branch: CCTrigger.h
 	
+	int i_channel;
+	std::string FileName;
+	int numacquisitions=10000;
+	//std::cout << "Please enter number of writes to the action register: ";
+	//std::cin >> numacquisitions;
+	if(argc<3||argc>4){
+		std::cout<<"Usage: ./main ADC_channel outfilename acquisitions=10000"<<std::endl;
+		return 0;
+	}
+	for (int i_arg=1;i_arg<argc;i_arg++){
+		if (i_arg==1) i_channel = (int)*argv[i_arg]-'0';
+		else if (i_arg==2) FileName = argv[i_arg];
+		else if (i_arg==3) numacquisitions=atoi(argv[i_arg]);
+		else std::cout <<"too many arguments, aborting."<<std::endl;
+	}
+	std::cout<<"Arguments are: "<<std::endl;
+	std::cout<<"Channel "<<i_channel<<", "<<"filename "<<FileName<<std::endl;
+	std::cout << std::endl << "There will be " << numacquisitions << " writes\n";
+	
 	int myargc = 0;
 	char *myargv[] = {(const char*) "somestring"};
 	TApplication *PMTTestStandApp = new TApplication("PMTTestStandApp",&myargc,myargv);
+	
+	std::stringstream ss_channel;
+	ss_channel<<i_channel;
+	std::string str_channel = ss_channel.str();
 	
 	////////////Scrambled Egg Part 1 Begins////////////
 	//Open up a new file called data.txt
@@ -111,9 +131,7 @@ int main(int argc, char* argv[]){
 	
 	//Initialise a counter for a loop
 	int count = 0;*/
-	
-	////////////End of Scrambled Egg part 1////////////	
-	
+	////////////End of Scrambled Egg part 1////////////
 	
 	std::string configcc;           // Module slots
 	
@@ -225,13 +243,10 @@ int main(int argc, char* argv[]){
 	//std::cout << "Clearing modules and printing the registers" << std::endl;
 	
 	//Open File for ADC readouts
+	std::string ADCFileName = FileName+".txt";
 	std::ofstream ADCRead;
-	ADCRead.open ("QDC_Vals_UVLED_nofilter.txt");
-	
-	int repeats=10;
-	std::cout << "Please enter number of writes to the action register: ";
-	//std::cin >> repeats;
-	std::cout << std::endl << "There will be " << repeats << " writes\n";
+	ADCRead.open(ADCFileName.c_str());
+	//ADCRead.open ("QDC_Vals_shorter_gate_channel3.txt");
 	
 	long RegStore;
 	CC->ActionRegRead(RegStore);
@@ -282,12 +297,13 @@ int main(int argc, char* argv[]){
 	int command_ok;
 	int ARegDat;
 	long ARegRead;
+	int printfreq=500;
+	int plotfreq=100;
 	// Execute: MAIN LOOP
-	repeats=10000;
 	TCanvas* canv = new TCanvas("canv","canv",900,600);
 	canv->cd();
-	TH2D *hist = new TH2D("hist","ADC values : entry",100,0,10000,100,0,100);
-	for (int i = 0; i < repeats; i++)
+	TH2D *hist = new TH2D("hist","ADC values : entry",100,0,numacquisitions,100,10,100);
+	for (int i = 0; i < numacquisitions; i++)
 	{
 		//break;
 		
@@ -332,7 +348,7 @@ int main(int argc, char* argv[]){
 		
 		// Fire LED! (and gate ADCs)
 		command_ok = CC->ActionRegWrite(RegActivated);
-		std::cout<<"Firing LED " << ((command_ok) ? "OK" : "FAILED") << std::endl;
+		//std::cout<<"Firing LED " << ((command_ok) ? "OK" : "FAILED") << std::endl;
 		
 		// alternatively, run the test, which connects internal charge generator and pulses the gate
 		for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
@@ -404,19 +420,21 @@ int main(int argc, char* argv[]){
 			if(ADCvals.size()==0){ std::cerr<<"ADC "<<cardi<< " GetData returned no measurements!"<<std::endl; }
 			for( std::map<int,int>::iterator aval = ADCvals.begin(); aval!=ADCvals.end(); aval++){
 				ADCRead << ", ";
-				if(aval!=ADCvals.begin()) std::cout<<", ";
 				ADCRead << aval->second;
-				std::cout << /*aval->first << "=" <<*/ aval->second;
+				if (i%printfreq==0) {
+					std::cout << /*aval->first << "=" <<*/ aval->second;
+					if(aval!=ADCvals.begin()) std::cout<<", ";
+				}
 			}
-			hist->Fill(i,ADCvals.at(0));
-			if (i%100 ==0) {hist->Draw("colz");
+			hist->Fill(i,ADCvals.at(i_channel));
+			if (i%plotfreq==0) {hist->Draw("colz");
 			canv->Modified();
 			canv->Update();
-			//gSystem->ProcessEvents();
+			gSystem->ProcessEvents();
 			}
 			//if ((i%500)==0){TCanvas *c1 = new TCanvas(); hist->Draw("colz");}
 			ADCRead << std::endl;
-			std::cout<<std::endl;
+			if (i%printfreq==0) { std::cout<<std::endl; }
 		}
 		//ADCRead << std::endl;
 		//for(int delayi=0; delayi<100; delayi++)
@@ -426,11 +444,14 @@ int main(int argc, char* argv[]){
 	ADCRead.close();
 	
 	
+	std::string adc_pdf = FileName+"_ch"+str_channel+"_stability.pdf";
+	canv->SaveAs(adc_pdf.c_str());
 	std::cout<<"cleanup"<<std::endl;
 	Lcard.clear();
 	Ncard.clear();
 	Data.ch.clear();
 }
+
 
 ////////////////////////////////////
 // DataModel.h
