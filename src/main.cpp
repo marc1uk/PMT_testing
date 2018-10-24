@@ -92,7 +92,7 @@ int main(int argc, char* argv[]){
 	int myargc = 0;
 	char *myargv[] = {(const char*) "somestring"};
 	TApplication *PMTTestStandApp = new TApplication("PMTTestStandApp",&myargc,myargv);
-
+	
 	////////////Scrambled Egg Part 1 Begins////////////
 	//Open up a new file called data.txt
 	/*std::ofstream data;
@@ -113,8 +113,8 @@ int main(int argc, char* argv[]){
 	int count = 0;*/
 	
 	////////////End of Scrambled Egg part 1////////////	
-
-
+	
+	
 	std::string configcc;           // Module slots
 	
 	std::vector<std::string> Lcard, Ccard;
@@ -147,7 +147,7 @@ int main(int argc, char* argv[]){
 	std::stringstream ssL;
 	std::string sEmp;
 	int iEmp;
-
+	
 	int c = 0;
 	while (getline(fin, Line))
 	{
@@ -226,7 +226,7 @@ int main(int argc, char* argv[]){
 	
 	//Open File for ADC readouts
 	std::ofstream ADCRead;
-	ADCRead.open ("QDC_Vals_shorter_gate.txt");
+	ADCRead.open ("QDC_Vals_UVLED_nofilter.txt");
 	
 	int repeats=10;
 	std::cout << "Please enter number of writes to the action register: ";
@@ -295,29 +295,31 @@ int main(int argc, char* argv[]){
 		// =============================
 		// step 0: initialize the card
 /*
-		std::cout<<"Initializing 4300B"<<std::endl;
-		command_ok = List.CC["ADC"].at(0)->Z();
-		if(command_ok<0) std::cerr<<"4300B::Z() ret<0. Whatever that means"<<std::endl;
-		usleep(1000); // sleep 1ms, and rest
-		std::cout<<"Printing intialized register - expect top 7 bits to be '1'"<<std::endl;
-		// check the initialize worked: bits 9-15 should be set to 1 by a Z() command 
-		List.CC["ADC"].at(0)->GetRegister();  // so check it's set as expected;
-		List.CC["ADC"].at(0)->DecRegister();
-		List.CC["ADC"].at(0)->PrintRegister();
+		for (int i = 0; i < List.CC["ADC"].size(); i++){
+			std::cout<<"Initializing 4300B "<<i<<std::endl;
+			command_ok = List.CC["ADC"].at(0)->Z();
+			if(command_ok<0) std::cerr<<"4300B::Z() ret<0. Whatever that means"<<std::endl;
+			usleep(1000); // sleep 1ms, and rest
+			std::cout<<"Printing intialized register - expect top 7 bits to be '1'"<<std::endl;
+			// check the initialize worked: bits 9-15 should be set to 1 by a Z() command 
+			List.CC["ADC"].at(i)->GetRegister();  // so check it's set as expected;
+			List.CC["ADC"].at(i)->DecRegister();
+			List.CC["ADC"].at(i)->PrintRegister();
 		
-		// step 1: setup register
-		std::cout<<"configuring 4300B from file "<<Ccard.at(1)<<std::endl;
-		List.CC["ADC"].at(0)->SetConfig(Ccard.at(1));    // load ECL, CLE etc. members with desired configuration
-		List.CC["ADC"].at(0)->EncRegister();             // encode ECL, CLE etc into Control member
-		std::cout<<"Writing following register contents"<<std::endl;
-		List.CC["ADC"].at(0)->PrintRegister();           // print ECL, CLE etc members
-		List.CC["ADC"].at(0)->SetRegister();             // write Control member to the card
-		usleep(1000);
-		std::cout<<"Read back the following register contents"<<std::endl;
-		List.CC["ADC"].at(0)->GetRegister();             // read from the card into Control member
-		List.CC["ADC"].at(0)->DecRegister();             // decode 'Control' member into ECL, CLE etc. members
-		List.CC["ADC"].at(0)->PrintRegister();           // print ECL, CLE etc members
-		usleep(1000); // sleep 1ms, and rest 
+			// step 1: setup register
+			std::cout<<"configuring 4300B from file "<<Ccard.at(1)<<std::endl;
+			List.CC["ADC"].at(i)->SetConfig(Ccard.at(1));    // load ECL, CLE etc. members with desired configuration
+			List.CC["ADC"].at(i)->EncRegister();             // encode ECL, CLE etc into Control member
+			std::cout<<"Writing following register contents"<<std::endl;
+			List.CC["ADC"].at(i)->PrintRegister();           // print ECL, CLE etc members
+			List.CC["ADC"].at(i)->SetRegister();             // write Control member to the card
+			usleep(1000);
+			std::cout<<"Read back the following register contents"<<std::endl;
+			List.CC["ADC"].at(i)->GetRegister();             // read from the card into Control member
+			List.CC["ADC"].at(i)->DecRegister();             // decode 'Control' member into ECL, CLE etc. members
+			List.CC["ADC"].at(i)->PrintRegister();           // print ECL, CLE etc members
+			usleep(1000); // sleep 1ms, and rest 
+		}
 */
 		
 		// step 2: clear the module to prep for test
@@ -337,11 +339,11 @@ int main(int argc, char* argv[]){
 			//command_ok = List.CC["ADC"].at(cardi)->InitTest();
 			//std::cout<<"test start "<<i<<" " << ((command_ok) ? "OK" : "FAILED") << std::endl;
 		}
-		//for(int sleeps=0; sleeps<500; sleeps++)
-		usleep(100);
-
+		//for(int sleeps=0; sleeps<5000; sleeps++)
+		usleep(1000);
+		
 		for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
-			int numchecks=1;
+			int numchecks=2;
 			int statusreglast=0;
 			for(int checknum=0; checknum<numchecks; checknum++){
 				// now check for the 'busy' signal?
@@ -353,7 +355,8 @@ int main(int argc, char* argv[]){
 				if(not busy){ /*std::cout<<"Q=0; BUSY is ON!"<<std::endl;*/ break; }
 				else if(checknum==numchecks-1){ std::cerr<<"ADC "<<i<< " BUSY was not raised following Gate / InitTest?" << std::endl; }
 				else {
-					//if(statusreg!=statusreglast) std::cout<<"status reg: Q=1, register = " << statusreg << "("<< std::bitset<16>(statusreg) << ")" << std::endl;
+					// if(statusreg!=statusreglast)
+					// std::cout<<"status reg: Q="<<busy<<", register = " << statusreg << "("<< std::bitset<16>(statusreg) << ")" << std::endl;
 					//statusreglast=statusreg;
 					usleep(100);
 				} // sleep 10us
@@ -369,7 +372,7 @@ int main(int argc, char* argv[]){
 		ADCRead << timeStamp;
 		
 		//std::cout<<"Reading ADCvals at " << timeStamp<<std::endl;
-
+		
 		// Read ADC values
 		for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
 			//List.CC["ADC"].at(cardi)->PrintRegister();
@@ -420,7 +423,7 @@ int main(int argc, char* argv[]){
 		//usleep(1000);
 	}
 	std::cout<<"closing file"<<std::endl;
-	ADCRead.close();	
+	ADCRead.close();
 	
 	
 	std::cout<<"cleanup"<<std::endl;
@@ -449,7 +452,7 @@ CamacCrate* Create(std::string cardname, std::string config, int cardslot)
 	if (cardname == "ADC")
 	{
 		//std::cout<<"ADC"<<std::endl;
-		ccp = new Lecroy4300b(cardslot, config);//FIXME 
+		ccp = new Lecroy4300b(cardslot, config);
 	}
 	else if (cardname == "SCA")
 	{
