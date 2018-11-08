@@ -1,5 +1,7 @@
 /* vim:set noexpandtab tabstop=4 wrap */
 #include "CamacCrate.h"
+//#include "CAENC117B.h"
+#include "my_Caen_C117B.h"
 //#include "Lecroy3377.h"
 //#include "Lecroy4300b.h"
 #include "Jorway85A.h"
@@ -128,7 +130,8 @@ int main(int argc, char* argv[]){
 	// Create card object based on configuration read from file
 	
 	int trg_pos = 0;                                            // position of trigger card in list of cards
-	int scaler_pos = -1;                                         // position of scaler in list of cards
+	int scaler_pos = -1;                                        // position of scaler in list of cards
+	int caen_pos = -2;                                          // position of CAEN controller in list of cards
 	std::cout << "begin scan over " <<Lcard.size()<< " cards " << std::endl;
 	for (int i = 0; i < Lcard.size(); i++)                      // CHECK i
 	{
@@ -153,8 +156,34 @@ int main(int argc, char* argv[]){
 			List.CC["DISC"].push_back(Create(Lcard.at(i), Ccard.at(i), Ncard.at(i)));               //They use CC at 0
 			std::cout << "constructed Lecroy4413 module" << std::endl;
 		}
+		else if (Lcard.at(i) == "CAEN")
+		{
+			caen_pos = List.CC["CAEN"].size();
+			std::cout << "CAENET controller found, list pos = " <<caen_pos <<std::endl;
+			List.CC["CAEN"].push_back(Create("CAEN",Ccard.at(i), Ncard.at(i)));
+			std::cout << "constructed CAENC117B controller module" <<std::endl;
+			std::cout << " "<<std::endl;
+		}
 		else std::cout << "\n\nUnkown card\n" << std::endl;
 	}
+	
+//	std::cout <<"CAENET Controller is in slot ";
+//	std::cout << List.CC["CAEN"].at(caen_pos)->GetSlot() << std::endl;
+//	Random Trials:
+//	int ret_caen = List.CC["CAEN"].at(caen_pos)->ReadCrateOccupation();
+//	List.CC["CAEN"].at(caen_pos)->TestOperation();
+//	int ret_vmax = List.CC["CAEN"].at(caen_pos)->SetVmax(6,7,1000);
+//	List.CC["CAEN"].at(caen_pos)->SetV1(6, 0, 100);
+//	int readslot;
+//	for (int i=0;i<1;i++){
+//		readslot= List.CC["CAEN"].at(caen_pos)->ReadSlotN(i);
+//	}
+//	int ret_test;
+//	for (int i_test=0; i_test<15; i_test++){
+//		ret_test=List.CC["CAEN"].at(caen_pos)->TestOperation(i_test);
+//	}
+//	int ret_lam = List.CC["CAEN"].at(caen_pos)->EnLAM();
+//	std::cout << List.CC["CAEN"].at(caen_pos)->TestLAM()<<std::endl;
 	
 	std::cout << "Primary scaler is in slot ";
 	std::cout << List.CC["SCA"].at(scaler_pos)->GetSlot() << std::endl;
@@ -280,23 +309,28 @@ CamacCrate* Create(std::string cardname, std::string config, int cardslot)
 	CamacCrate* ccp;
 //	if (cardname == "TDC")
 //	{
-//	  std::cout<<"TDC"<<std::endl;
+//		std::cout<<"TDC"<<std::endl;
 //		ccp = new Lecroy3377(cardslot, config);
 //	}
 //	if (cardname == "ADC")
 //	{
-//	  std::cout<<"ADC"<<std::endl;
+//		std::cout<<"ADC"<<std::endl;
 //		ccp = new Lecroy4300b(cardslot, config);
 //	}
 	if (cardname == "SCA")
 	{
-	  std::cout<<"SCA"<<std::endl;
+		std::cout<<"SCA"<<std::endl;
 		ccp = new Jorway85A(cardslot, config);
 	}
 	if (cardname == "DISC")
 	{
 	  std::cout<<"DISC"<<std::endl;
 		ccp = new LeCroy4413(cardslot, config);
+	}
+	if (cardname == "CAEN")
+	{
+		std::cout<<"CAEN"<<std::endl;
+		ccp = new CAENC117B(cardslot, config);
 	}
 	return ccp;
 }

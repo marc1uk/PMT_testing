@@ -7,7 +7,8 @@
 #If TRG is not specified, the first TDC found is used
 #
 #Type	Slot	#Register file
-SCA	1	configfiles/SCAreg
+#SCA	1	configfiles/SCAreg
 #TDC	18	configfiles/TDCreg
 #ADC	12  	configfiles/ADCreg
 DISC	5	configfiles/DiscReg
+#CAEN	1	configfiles/CAENreg

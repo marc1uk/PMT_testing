@@ -13,6 +13,7 @@
 #include <string>
 #include <map>
 #include <ctime>
+#include <unistd.h>
 #include <bitset>
 
 #include "libxxusb.h"
