@@ -10,3 +10,4 @@
 SCA	1	configfiles/SCAreg
 #TDC	18	configfiles/TDCreg
 #ADC	12  	configfiles/ADCreg
+DISC	5	configfiles/DiscReg

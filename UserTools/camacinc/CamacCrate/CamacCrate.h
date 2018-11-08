@@ -88,7 +88,19 @@ class CamacCrate
 		virtual int TestChannel(int scalernum) { return 0; }
 		virtual int ReadAndClear(int scalernum) { return 0; }
 		virtual int ReadAll(int *Data) { return 0; }
-		
+
+		//LECROY4413
+		virtual int ReadThreshold(int& threshold) { return 0; }
+		virtual int ReadThreshold() { return 0; }
+		virtual int WriteThresholdValue(int thresholdin) { return 0; }
+		virtual int EnableFPthreshold() { return 0; }
+		virtual int EnableProgrammedThreshold() { return 0; }
+		virtual int ReadChannelMask(int& channelmaskin) { return 0; }
+		virtual int ReadChannelMask() { return 0; }
+		virtual int WriteChannelMask(int& channelmaskin) { return 0; }
+		//virtual int TestInit() { return 0; }
+		virtual int SetRemoteMode(int modein) { return 0; }
+		virtual int GetRemoteMode() { return 0; }
 		
 		//COMMON
 		virtual int GetData(std::map<int, int> &mData) { return 0; }

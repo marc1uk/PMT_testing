@@ -3,6 +3,7 @@
 //#include "Lecroy3377.h"
 //#include "Lecroy4300b.h"
 #include "Jorway85A.h"
+#include "Lecroy4413.h"
 #include "libxxusb.h"
 #include "usb.h"
 #include <ctime>
@@ -55,7 +56,7 @@ int main(int argc, char* argv[]){
 	// extract test stats
 	double testhours = atoi(argv[1]);
 	double testmins = testhours*60.;
-	int timeBet = atoi(argv[2]);
+	double timeBet = atof(argv[2]);
 	double countmins = (argc>3) ? (double(atoi(argv[3]))/60.) : 1.;
 	double onesampletime = timeBet+countmins; // time between readings is wait time + count time
 	int reps = (testmins/onesampletime) + 1;
@@ -142,10 +143,15 @@ int main(int argc, char* argv[]){
 		}
 		else if (Lcard.at(i) == "SCA")
 		{
-			scaler_pos = List.CC["SCA"].size();    // we only have one scaler anyway
-			std::cout << "scaler found, list pos = " << scaler_pos << std::endl;
-			List.CC["SCA"].push_back(Create("SCA", Ccard.at(i), Ncard.at(i)));               //They use CC at 0
-			std::cout << "constructed Jorway85A module" << std::endl;
+			scaler_pos = List.CC["SCA"].size();
+			//std::cout << "scaler found, list pos = " << scaler_pos << std::endl;
+			List.CC["SCA"].push_back(Create(Lcard.at(i), Ccard.at(i), Ncard.at(i)));               //They use CC at 0
+			//std::cout << "constructed Jorway85A module" << std::endl;
+		}
+		else if (Lcard.at(i) == "DISC")
+		{
+			List.CC["DISC"].push_back(Create(Lcard.at(i), Ccard.at(i), Ncard.at(i)));               //They use CC at 0
+			std::cout << "constructed Lecroy4413 module" << std::endl;
 		}
 		else std::cout << "\n\nUnkown card\n" << std::endl;
 	}
@@ -171,13 +177,24 @@ int main(int argc, char* argv[]){
 	
 	
 	data << "PMTID1 " << pmtID1 << ", PMTID2 " << pmtID2 << ", " << std::endl;
+	int thethreshold;
+	List.CC["DISC"].at(0)->ReadThreshold(thethreshold);
+	data << "Discriminator threshold "<<(thethreshold)<<" mV"<<std::endl;
 	data << "timestamp, ch1 reading, ch1 rate, ch2 reading, ch2 rate, ch3 reading, ch3 rate, ch4 reading, ch4 rate"<<std::endl;
 	// Execute: MAIN LOOP
 	////////////scrambled egg code part 2////////////
+	//std::vector<int> thresholds{30,40,50,60,70,80,90,100,200,300,400};
+	//reps=thresholds.size();
 	for( int count=0; count < reps; count++)  // loop over readings
 	{
 		std::cout << "Clearing All Scalars" << std::endl;
 		List.CC["SCA"].at(scaler_pos)->ClearAll();
+		
+		//std::cout<<"setting discriminator threshold to 30"<<std::endl;
+		//thethreshold=thresholds.at(count);
+		//List.CC["DISC"].at(0)->WriteThresholdValue(thethreshold);
+		//List.CC["DISC"].at(0)->ReadThreshold(thethreshold);
+		//std::cout<<"Threshold is now: "<<thethreshold<<std::endl;
 		
 		//waiting for one minute for counts to accumulate
 		std::cout << "Measuring rates" << std::endl;
@@ -275,6 +292,11 @@ CamacCrate* Create(std::string cardname, std::string config, int cardslot)
 	{
 	  std::cout<<"SCA"<<std::endl;
 		ccp = new Jorway85A(cardslot, config);
+	}
+	if (cardname == "DISC")
+	{
+	  std::cout<<"DISC"<<std::endl;
+		ccp = new LeCroy4413(cardslot, config);
 	}
 	return ccp;
 }

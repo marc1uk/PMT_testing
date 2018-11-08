@@ -15,7 +15,7 @@ The values may be found by identifying the CC_USB device in the list of usb devi
 Noting the hex number, and entering it into:
 	user@host:~$ lsusb -v -d 16dc:0001
 	Bus 007 Device 007: ID 16dc:0001 Wiener, Plein & Baus CC
-	Couldn't open device, some information will be missing
+	Couldn't open device, some information will be missing             <<< 
 	Device Descriptor:
 	  bLength                18
 	  bDescriptorType         1
@@ -31,4 +31,15 @@ Noting the hex number, and entering it into:
 	  iProduct                2 
 	  iSerial                 3
 	... 
+TEST THE CHANGES WORKED: by re-running lsusb -v -d and checking the device could be opened:
+	user@host:~$ lsusb -v -d 16dc:0001
+	Bus 007 Device 007: ID 16dc:0001 Wiener, Plein & Baus CC
+	Couldn't open device, some information will be missing             <<< THIS SHOULD NOT SHOW
 
+sudo dmesg | tail
+usb 1-1: new high speed USB device number 5 using ehci_hcd
+usb 1-1: New USB device found, idVendor=21e1, idProduct=0000
+usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+usb 1-1: Product: CAEN DT5xxx USB 1.0
+usb 1-1: Manufacturer: CAEN
+usb 1-1: configuration #1 chosen from 1 choice
