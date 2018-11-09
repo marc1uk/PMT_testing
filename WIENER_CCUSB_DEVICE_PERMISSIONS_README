@@ -2,7 +2,9 @@ To allow communications with the CCUSB first the permissions of libusb must be m
 This can be done in debian stretch by adding a user defined override rule. 
 Make or add to the file:
 	/etc/udev/rules.d/99-user.rules
-The following line:
+The following lines: (various may be needed depending on system)
+	ACTION=="add", SYSFS{product}=="CC-USB CAMAC CRATE CONTROLLER", MODE="0660",GROUP="marc"
+	SUBSYSTEMS=="usb", MODE="666", ATTRS{product}=="CC-USB CAMAC CRATE CONTROLLER", NAME="ccusbcrate"
 	SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device",SYSFS{idVendor}=="0x16dc" , SYSFS{idProduct}=="0001", MODE="0666"
 where idVendor and idProduct may need to be modified.
 The values may be found by identifying the CC_USB device in the list of usb devices shown by
@@ -15,7 +17,7 @@ The values may be found by identifying the CC_USB device in the list of usb devi
 Noting the hex number, and entering it into:
 	user@host:~$ lsusb -v -d 16dc:0001
 	Bus 007 Device 007: ID 16dc:0001 Wiener, Plein & Baus CC
-	Couldn't open device, some information will be missing
+	Couldn't open device, some information will be missing             <<< 
 	Device Descriptor:
 	  bLength                18
 	  bDescriptorType         1
@@ -31,4 +33,16 @@ Noting the hex number, and entering it into:
 	  iProduct                2 
 	  iSerial                 3
 	... 
+TEST THE CHANGES WORKED: by re-running lsusb -v -d and checking the device could be opened:
+	user@host:~$ lsusb -v -d 16dc:0001
+	Bus 007 Device 007: ID 16dc:0001 Wiener, Plein & Baus CC
+	Couldn't open device, some information will be missing             <<< THIS SHOULD NOT SHOW
 
+sudo dmesg | tail
+usb 1-1: new high speed USB device number 5 using ehci_hcd
+usb 1-1: New USB device found, idVendor=21e1, idProduct=0000
+usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+usb 1-1: Product: CAEN DT5xxx USB 1.0
+usb 1-1: Manufacturer: CAEN
+usb 1-1: configuration #1 chosen from 1 choice
+After adding the line to udev rules, unplug and re-connect the device. You shouldn't need to reboot.

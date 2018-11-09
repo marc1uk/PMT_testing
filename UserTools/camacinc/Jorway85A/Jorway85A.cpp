@@ -22,8 +22,8 @@ int Jorway85A::ReadScaler(int scalernum) //Read Scaler scalernum.
 	int Data = 0;
 	int Q = 0, X = 0;
 
-	int ret = READ(scalernum, 0, Data, Q, X);
-	std::cout<< ", return val = "<< ret<<", Data = "<<Data<<std::endl;
+	int ret = READ(0, scalernum, Data, Q, X);
+	//std::cout<< ", return val = "<< ret<<", Data = "<<Data<<std::endl;
 	if (ret < 0){
 		return ret;
 	} else {
@@ -34,10 +34,15 @@ int Jorway85A::ReadScaler(int scalernum) //Read Scaler scalernum.
 
 int Jorway85A::ClearScaler(int scalernum) // Clear Scaler scalernum.
 {
+	//std::cout<<"clearing scalar "<<scalernum<<std::endl;
+	//std::cout<<"Before clear counts["<<scalernum<<"] = "<<ReadScaler(scalernum)<<std::endl;
 	if(scalernum>3||scalernum<0) return -1;
 	int Data = 0;
 	int Q = 0, X = 0;
-	int ret = WRITE(9, scalernum, Data, Q, X);
+	int ret = READ(9, scalernum, Data, Q, X);
+	//std::cout<< ", return val = "<< ret<<", Q = " << Q << ", X = " << X << ", Data = "<<Data<<std::endl;
+	//std::cout<<"After clear counts["<<scalernum<<"] = "<<ReadScaler(scalernum)<<std::endl;
+	//std::cout<<" zeroing counts[" << scalernum << "]" << std::endl;
 	counts[scalernum] = 0;
 	return Q;
 }
@@ -70,7 +75,6 @@ int Jorway85A::ReadAll(int *Data) //Read all scalers
 {
 	int returnval=0;
 	for(int scalernum=0; scalernum<4; scalernum++){
-		std::cout << "Scalernum = " << scalernum << " ";
 		returnval = ReadScaler(scalernum);
 		Data[scalernum]=counts[scalernum];
 	}
@@ -92,16 +96,15 @@ int Jorway85A::ClearAll() //Clear all scalers
 int Jorway85A::READ(int F, int A, int &Data, int &Q, int &X)	//Generic READ
 {
 	long lData;
-	int ret = CamacCrate::READ(GetID(), F, A, lData, Q, X);
+	int ret = CamacCrate::READ(GetID(), A, F, lData, Q, X);
 	Data = lData;
-	//std::cout << "GetID (): " << GetID() << "\n lData = " << lData << std::endl;
 	return ret;
 }
 
 int Jorway85A::WRITE(int F, int A, int &Data, int &Q, int &X)	//Gneric WRITE
 {
 	long lData = long(Data);
-	return CamacCrate::WRITE(GetID(), F, A, lData, Q, X);
+	return CamacCrate::WRITE(GetID(), A, F, lData, Q, X);
 }
 
 int Jorway85A::GetID()		//Return ID of module

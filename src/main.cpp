@@ -1,13 +1,12 @@
-/*
-This Main File Is Mostly For Experimentation, It probably shouldn't be in any final program. If it is, 
-something is probably wrong with the program - Max C
-*/
-/* vim:set noexpandtab tabstop=4 wrap */
+/* vim:set noexpandtab tabstop=2 wrap */
 #include <unistd.h>
 #include "CamacCrate.h"
+//#include "CAENC117B.h"
+#include "my_Caen_C117B.h"
 //#include "Lecroy3377.h"
 #include "Lecroy4300b.h"
 #include "Jorway85A.h"
+#include "Lecroy4413.h"
 #include "libxxusb.h"
 #include "usb.h"
 #include <ctime>
@@ -91,6 +90,10 @@ int main(int argc, char* argv[]){
 	int numacquisitions=10000;
 	//std::cout << "Please enter number of writes to the action register: ";
 	//std::cin >> numacquisitions;
+	
+	// ***************************************
+	// GAIN MEASUREMENT ARGS
+	// ***************************************
 	if(argc<3||argc>4){
 		std::cout<<"Usage: ./main ADC_channel outfilename acquisitions=10000"<<std::endl;
 		return 0;
@@ -105,33 +108,42 @@ int main(int argc, char* argv[]){
 	std::cout<<"Channel "<<i_channel<<", "<<"filename "<<FileName<<std::endl;
 	std::cout << std::endl << "There will be " << numacquisitions << " writes\n";
 	
-	int myargc = 0;
-	char *myargv[] = {(const char*) "somestring"};
+	int myargc = 1;
+	char arg1[] = "potato";
+	char* myargv[]={arg1};
 	TApplication *PMTTestStandApp = new TApplication("PMTTestStandApp",&myargc,myargv);
+	
+//	// ***************************************
+//	// COOLDOWN MEASUREMENT ARGS
+//	// ***************************************
+//	if(argc<3){
+//		std::cout<<"usage: ./main [test_duration_in_hours] [time_between_samples_in_minutes] [count_time_in_seconds=60]"<<std::endl;
+//		return 0;
+//	}
+//	// extract test stats
+//	double testhours = atoi(argv[1]);
+//	double testmins = testhours*60.;
+//	double timeBet = atof(argv[2]);
+//	double countmins = (argc>3) ? (double(atoi(argv[3]))/60.) : 1.;
+//	double onesampletime = timeBet+countmins; // time between readings is wait time + count time
+//	int numacquisitions = (testmins/onesampletime) + 1;
+//	std::cout << "The scalers will be read " << numacquisitions << " times over " << testhours << " hours";
+//	std::cout << " with " << timeBet << " minutes between readouts, and ";
+//	std::cout << countmins << " minutes used to determine scalar rate.\n";
+//	// ***************************************
+	
+//	//Ask User for PMT ID's
+//	std::string pmtID1;
+//	std::string pmtID2;
+//	std::cout << "Please enter first PMT ID: ";
+//	std::cin >> pmtID1;
+//	std::cout << std::endl << "Enter second PMT ID: ";
+//	std::cin >> pmtID2;
+//	std::cout << std::endl;
 	
 	std::stringstream ss_channel;
 	ss_channel<<i_channel;
 	std::string str_channel = ss_channel.str();
-	
-	////////////Scrambled Egg Part 1 Begins////////////
-	//Open up a new file called data.txt
-	/*std::ofstream data;
-	data.open ("data.txt");
-	//Retrieve the desired number of times for the scaler to be read out
-	int reps;
-	std::cout << "Enter number of scaler readouts\n";
-	std::cin >> reps;
-	std::cout << "\nThe scalers will be read " << reps << " times\n";
-	//Retrieve time (in minutes) between readouts (executed in a for loop)
-	
-	int timeBet;
-	std::cout << "Enter the time (in minutes) between readouts: ";
-	std::cin >> timeBet;
-	std::cout << "There will be " << timeBet << " minutes between readouts.\n";
-	
-	//Initialise a counter for a loop
-	int count = 0;*/
-	////////////End of Scrambled Egg part 1////////////
 	
 	std::string configcc;           // Module slots
 	
@@ -195,8 +207,9 @@ int main(int argc, char* argv[]){
 	// Create card object based on configuration read from file
 	
 	int trg_pos = 0;                                            // position of trigger card in list of cards
-	int scaler_pos = -1;
+	int scaler_pos = -1;                                        // position of scaler in list of cards
 	int adc_pos = -2;                                           // position of scaler in list of cards
+	int caen_pos = -2;                                          // position of CAEN controller in list of cards
 	std::cout << "begin scan over " <<Lcard.size()<< " cards " << std::endl;
 	for (int i = 0; i < Lcard.size(); i++)
 	{
@@ -227,20 +240,56 @@ int main(int argc, char* argv[]){
 		}
 		else if (Lcard.at(i) == "SCA")
 		{
-			scaler_pos = List.CC["SCA"].size();    // we only have one scaler anyway
-			std::cout << "scaler found, list pos = " << scaler_pos << std::endl;
-			List.CC["SCA"].push_back(Create("SCA", Ccard.at(i), Ncard.at(i)));               //They use CC at 0
-			std::cout << "constructed Jorway85A module" << std::endl;
+			scaler_pos = List.CC["SCA"].size();
+			//std::cout << "scaler found, list pos = " << scaler_pos << std::endl;
+			List.CC["SCA"].push_back(Create(Lcard.at(i), Ccard.at(i), Ncard.at(i)));               //They use CC at 0
+			//std::cout << "constructed Jorway85A module" << std::endl;
+		}
+		else if (Lcard.at(i) == "DISC")
+		{
+			List.CC["DISC"].push_back(Create(Lcard.at(i), Ccard.at(i), Ncard.at(i)));               //They use CC at 0
+			std::cout << "constructed Lecroy4413 module" << std::endl;
+		}
+		else if (Lcard.at(i) == "CAEN")
+		{
+			caen_pos = List.CC["CAEN"].size();
+			std::cout << "CAENET controller found, list pos = " <<caen_pos <<std::endl;
+			List.CC["CAEN"].push_back(Create("CAEN",Ccard.at(i), Ncard.at(i)));
+			std::cout << "constructed CAENC117B controller module" <<std::endl;
+			std::cout << " "<<std::endl;
 		}
 		else std::cout << "\n\nUnkown card\n" << std::endl;
 	}
+	
+//	// CAEN C117B tests
+//	// ----------------
+//	std::cout <<"CAENET Controller is in slot ";
+//	std::cout << List.CC["CAEN"].at(caen_pos)->GetSlot() << std::endl;
+//	Random Trials:
+//	int ret_caen = List.CC["CAEN"].at(caen_pos)->ReadCrateOccupation();
+//	List.CC["CAEN"].at(caen_pos)->TestOperation();
+//	int ret_vmax = List.CC["CAEN"].at(caen_pos)->SetVmax(6,7,1000);
+//	List.CC["CAEN"].at(caen_pos)->SetV1(6, 0, 100);
+//	int readslot;
+//	for (int i=0;i<1;i++){
+//		readslot= List.CC["CAEN"].at(caen_pos)->ReadSlotN(i);
+//	}
+//	int ret_test;
+//	for (int i_test=0; i_test<15; i_test++){
+//		ret_test=List.CC["CAEN"].at(caen_pos)->TestOperation(i_test);
+//	}
+//	int ret_lam = List.CC["CAEN"].at(caen_pos)->EnLAM();
+//	std::cout << List.CC["CAEN"].at(caen_pos)->TestLAM()<<std::endl;
 	
 	//std::cout << "Primary scaler is in slot ";
 	//std::cout << List.CC["SCA"].at(scaler_pos)->GetSlot() << std::endl;
 	
 	//////////////////////////////////////
 	// MRD branch: LeCroy.cpp - Initialise();
-	//std::cout << "Clearing modules and printing the registers" << std::endl;
+	
+	// ***************************************
+	// GAIN MEASUREMENT SETUP
+	// ***************************************
 	
 	//Open File for ADC readouts
 	std::string ADCFileName = FileName+".txt";
@@ -251,10 +300,12 @@ int main(int argc, char* argv[]){
 	long RegStore;
 	CC->ActionRegRead(RegStore);
 	long RegActivated   = RegStore | 0x02;  // Modify bit 1 of the register to "1" (CCUSB Trigger)
-	long RegDeactivated = RegStore & ~0x02;  // Modify bit 1 to 0 (disabled CCUSB trigger. (De-assert of the USB trigger is actually not needed)
+	long RegDeactivated = RegStore & ~0x02;  // Modify bit 1 to 0 (Deassert CCUSB trigger. Not strictly needed)
 	
 	CC->C();
-	//CC->Z(); // this calls Z (initialize) ON ALL CARDS AS WELL. THIS WILL RESET REGISTER SETTINGS OF THE QDCS, REQUIRING RECONFIGURATION!
+	//CC->Z(); 
+	// XXX CC->Z() CALLS Z() (initialize) ON ALL CARDS AS WELL. XXX
+	// THIS WILL RESET REGISTER SETTINGS, REQUIRING RECONFIGURATION!
 	usleep(100);
 	
 	// Configure CC-USB DGG_A to fire on USB trigger, and output to NIM O1
@@ -303,14 +354,92 @@ int main(int argc, char* argv[]){
 	TCanvas* canv = new TCanvas("canv","canv",900,600);
 	canv->cd();
 	TH2D *hist = new TH2D("hist","ADC values : entry",100,0,numacquisitions,100,10,100);
-	for (int i = 0; i < numacquisitions; i++)
+	
+//	// ***************************************
+//	// COOLDOWN MEASUREMENT SETUP
+//	// ***************************************
+//	//Open up a new file called data.txt
+//	std::ofstream data;
+//	data.open ("data.txt");
+//	data << "PMTID1 " << pmtID1 << ", PMTID2 " << pmtID2 << ", " << std::endl;
+//	int thethreshold;
+//	List.CC["DISC"].at(0)->ReadThreshold(thethreshold);
+//	data << "Discriminator threshold "<<(thethreshold)<<" mV"<<std::endl;
+//	data << "timestamp, ch1 reading, ch1 rate, ch2 reading, ch2 rate, "
+//					"ch3 reading, ch3 rate, ch4 reading, ch4 rate"<<std::endl;
+//	
+//	// just for trials
+//	//std::cout << "Test Channel: " << List.CC["SCA"].at(scaler_pos)->TestChannel(3) << std::endl;
+//	//std::vector<int> thresholds{30,40,50,60,70,80,90,100,200,300,400};
+//	//numacquisitions=thresholds.size();
+//	// ***************************************
+	
+	
+	//////////////////////////////////////
+	// Execute: MAIN LOOP
+	for (int i = 0; i < numacquisitions; i++)    // loop over readings
 	{
 		//break;
 		
-		// NECESSARY AFTER Z() IS CALLED
-		// =============================
-		// step 0: initialize the card
+//		// ***************************************
+//		// COOLDOWN MEASUREMENT
+//		// ***************************************
+//		// threshold trials
+//		// ----------------
+//		//std::cout<<"setting discriminator threshold to 30"<<std::endl;
+//		//thethreshold=thresholds.at(i);
+//		//List.CC["DISC"].at(0)->WriteThresholdValue(thethreshold);
+//		//List.CC["DISC"].at(0)->ReadThreshold(thethreshold);
+//		//std::cout<<"Threshold is now: "<<thethreshold<<std::endl;
+//		
+//		std::cout << "Clearing All Scalars" << std::endl;
+//		List.CC["SCA"].at(scaler_pos)->ClearAll();
+//		///////////////////// debug:
+//		//std::cout << "zero'd values are: " << std::endl;
+//		//for(int chan=0; chan<4; chan++){
+//		//	std::cout << scalervals[chan];
+//		//	if(chan<3) std::cout << ", ";
+//		//}
+//		//////////////////// end debug
+//		
+//		//waiting for one minute for counts to accumulate
+//		std::cout << "Measuring rates" << std::endl;
+//		//std::this_thread::sleep_for(std::chrono::seconds(60));
+//		unsigned int counttimeinmicroseconds = countmins*60.*1000000.; //1000000
+//		usleep(counttimeinmicroseconds);
+//		
+//		//Read the scalars
+//		std::cout << "Reading Scalers and writing to file" << std::endl;
+//		int ret = List.CC["SCA"].at(scaler_pos)->ReadAll(scalervals);
+//		if(not ret < 0){        // FIXME need better error checking
+//				std::cerr << "error reading scalers: response was " << ret << std::endl;
+//			} else {
+//				// get and write timestamp to file
+//				std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
+//				time_t tt;
+//				tt = std::chrono::system_clock::to_time_t ( time );
+//				std::string timeStamp = ctime(&tt);
+//				timeStamp.erase(timeStamp.find_last_not_of(" \t\n\015\014\013")+1);
+//				data << timeStamp << ", ";
+//				// write scalar values and rates to file
+//				for(int chan=0; chan<4; chan++){
+//					data << scalervals[chan] << ", ";
+//					double darkRate = double (scalervals[chan]) / countmins;
+//					data << darkRate;
+//					if(chan<3) data << ", ";
+//				}
+//			}
+//		data << std::endl;
+//		std::cout << "Done writing to file" << std::endl;
+//		
+		
+		// ***************************************
+		// GAIN MEASUREMENT
+		// ***************************************
 /*
+		// step 0: initialize the card
+		// ---------------------------
+		// XXX THIS IS NECESSARY AFTER Z() IS CALLED XXX
 		for (int i = 0; i < List.CC["ADC"].size(); i++){
 			std::cout<<"Initializing 4300B "<<i<<std::endl;
 			command_ok = List.CC["ADC"].at(0)->Z();
@@ -351,10 +480,11 @@ int main(int argc, char* argv[]){
 		//std::cout<<"Firing LED " << ((command_ok) ? "OK" : "FAILED") << std::endl;
 		
 		// alternatively, run the test, which connects internal charge generator and pulses the gate
-		for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
-			//command_ok = List.CC["ADC"].at(cardi)->InitTest();
-			//std::cout<<"test start "<<i<<" " << ((command_ok) ? "OK" : "FAILED") << std::endl;
-		}
+		//for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
+		//	command_ok = List.CC["ADC"].at(cardi)->InitTest();
+		//	std::cout<<"test start "<<i<<" " << ((command_ok) ? "OK" : "FAILED") << std::endl;
+		//}
+		
 		//for(int sleeps=0; sleeps<5000; sleeps++)
 		usleep(1000);
 		
@@ -366,13 +496,18 @@ int main(int argc, char* argv[]){
 				int statusreg=0, busy=0, funcok=0;
 				command_ok = List.CC["ADC"].at(cardi)->READ(0, 0, statusreg, busy, funcok);  // F=0, A=0, N=slot (implicit)
 				if(not funcok) std::cerr<<"X=0, Function 0 (read register) not recognised??"<<std::endl;
-				//if(not statusreg) std::cerr<<"Status register = "<<statusreg<<", Camac LAM should at least be valid"<<std::endl;  // register contents are 0 when BUSY
+				// register contents are 0 when BUSY
+				//if(not statusreg) std::cerr<<"Status register = "<<statusreg
+				//													 <<", Camac LAM should at least be valid"<<std::endl;
 				if(command_ok<0) std::cerr<<"ret<0. Whatever that means"<<std::endl;
 				if(not busy){ /*std::cout<<"Q=0; BUSY is ON!"<<std::endl;*/ break; }
-				else if(checknum==numchecks-1){ std::cerr<<"ADC "<<i<< " BUSY was not raised following Gate / InitTest?" << std::endl; }
+				else if(checknum==numchecks-1){
+					std::cerr<<"ADC "<<i<< " BUSY was not raised following Gate / InitTest?" << std::endl;
+				}
 				else {
 					// if(statusreg!=statusreglast)
-					// std::cout<<"status reg: Q="<<busy<<", register = " << statusreg << "("<< std::bitset<16>(statusreg) << ")" << std::endl;
+					// std::cout<<"status reg: Q="<<busy<<", register = " << statusreg 
+					//					<< "("<< std::bitset<16>(statusreg) << ")" << std::endl;
 					//statusreglast=statusreg;
 					usleep(100);
 				} // sleep 10us
@@ -416,7 +551,8 @@ int main(int argc, char* argv[]){
 			}
 */
 			// so does this
-			List.CC["ADC"].at(cardi)->GetData(ADCvals);   // GetData calls DumpAll(ADCvals); or DumpCompressed based on register settings, includes waiting for LAM
+			// GetData calls DumpAll(ADCvals); or DumpCompressed based on register settings. Includes waiting for LAM
+			List.CC["ADC"].at(cardi)->GetData(ADCvals);
 			if(ADCvals.size()==0){ std::cerr<<"ADC "<<cardi<< " GetData returned no measurements!"<<std::endl; }
 			for( std::map<int,int>::iterator aval = ADCvals.begin(); aval!=ADCvals.end(); aval++){
 				ADCRead << ", ";
@@ -439,13 +575,42 @@ int main(int argc, char* argv[]){
 		//ADCRead << std::endl;
 		//for(int delayi=0; delayi<100; delayi++)
 		//usleep(1000);
+		
+//		// ***************************************
+//		// COOLDOWN MEASUREMENT DELAY
+//		// ***************************************
+//		//data << "End of Loop " << i << std::endl;
+//		//For loop will now wait for user-specified time
+//		std::cout<<"Waiting "<<timeBet<<" mins to next reading"<<std::endl;
+//		if(timeBet>1){
+//			// for monitoring the program, printout every minute
+//			for(int count2=0; count2 < timeBet; count2++){
+//				std::cout << (timeBet-count2) << " minutes to next reading..." << std::endl;
+//				//std::this_thread::sleep_for (std::chrono::seconds(1));
+//				double minuteinmicroseconds = 60.*1000000.;
+//				usleep(minuteinmicroseconds);
+//			}
+//		} else {
+//			double sleeptimeinmicroseconds = timeBet*60.*1000000.;
+//			usleep(sleeptimeinmicroseconds);
+//		}
+		
+		
 	}
+//	// ***************************************
+//	// COOLDOWN MEASUREMENT CLEANUP
+//	// ***************************************
+//	data.close();//close data file
+//	
+//	// ***************************************
+//	// GAIN MEASUREMENT CLEANUP
+//	// ***************************************
 	std::cout<<"closing file"<<std::endl;
 	ADCRead.close();
-	
-	
 	std::string adc_pdf = FileName+"_ch"+str_channel+"_stability.pdf";
 	canv->SaveAs(adc_pdf.c_str());
+	
+	
 	std::cout<<"cleanup"<<std::endl;
 	Lcard.clear();
 	Ncard.clear();
@@ -465,7 +630,7 @@ CamacCrate* Create(std::string cardname, std::string config, int cardslot)
 	CamacCrate* ccp= NULL;
 //	if (cardname == "TDC")
 //	{
-//	  std::cout<<"TDC"<<std::endl;
+//		std::cout<<"TDC"<<std::endl;
 //		ccp = new Lecroy3377(cardslot, config);
 //	}
 	//std::cout<<"cardname is "<<cardname<<", comp with 'ADC' is " << (cardname=="ADC") <<std::endl;
@@ -479,6 +644,16 @@ CamacCrate* Create(std::string cardname, std::string config, int cardslot)
 	{
 		//std::cout<<"SCA"<<std::endl;
 		ccp = new Jorway85A(cardslot, config);
+	}
+	else if (cardname == "DISC")
+	{
+	  std::cout<<"DISC"<<std::endl;
+		ccp = new LeCroy4413(cardslot, config);
+	}
+	else if (cardname == "CAEN")
+	{
+		std::cout<<"CAEN"<<std::endl;
+		ccp = new CAENC117B(cardslot, config);
 	}
 	else
 	{

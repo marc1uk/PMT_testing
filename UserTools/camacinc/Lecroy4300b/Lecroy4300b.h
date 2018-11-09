@@ -14,6 +14,7 @@
 #include <map>
 #include <bitset>
 #include <ctime>
+#include <unistd.h>
 
 #include "libxxusb.h"
 #include "CamacCrate.h"

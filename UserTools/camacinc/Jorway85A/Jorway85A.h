@@ -76,7 +76,7 @@ public:
 
 private:
 
-	uint64_t counts[4];
+	long long counts[4];
 	int ID;
 	int Common; // just for demonstration purposes of reading from config file
 
