@@ -9,10 +9,12 @@
 #include "Lecroy4413.h"
 #include "libxxusb.h"
 #include "usb.h"
+#include <string>
 #include <ctime>
 //#include <thread>
 #include <chrono>
 #include <fstream>
+#include <iostream>
 #include <cstring>
 #include <bitset>
 
@@ -44,8 +46,28 @@ struct Module           // One Struct to rule them all, One Struct to find them,
 	std::map<std::string, Card> Data;                          //Data
 	std::map<std::string, std::vector<CamacCrate*> > CC;       //Camac module class
 };
+struct TestVars{        // For loading test settings from config file
+	public:
+	std::vector<std::string> pmtNames{"Test"};    // assumed connected to ADC / discriminator inputs 0, 1, 2...
+	
+	std::string cooldownfilenamebase="NA";  // skip test if "NA"
+	double cooldowntotalmins=20;
+	double cooldowncountsecs=60;
+	double cooldownloopsecs=60;
+	double cooldownvoltage=1500;
+	int threshold=15;
+	int thresholdmode=0;
+	
+	std::string gainfilenamebase="gain";
+	std::vector<double> gainVoltages={1500};
+	int gainacquisitions=10000;
+	bool gainliveplot=false;
+	int gainliveplotchannel=0;
+	int gainliveplotfreq=500;
+	int gainprintfreq=500;
+};
 
-// FUNCTIONS
+// SUPPORT FUNCTIONS
 short SetRegBits(CamacCrate* CC, int regnum, int firstbit, int numbits, bool on_or_off);
 void PrintReg(CamacCrate* CC,int regnum);
 CamacCrate* Create(std::string cardname, std::string config, int cardslot);
@@ -53,10 +75,15 @@ int LoadConfigFile(std::string configfile, std::vector<std::string> &Lcard, std:
 int ConstructCards(Module &List, std::vector<std::string> &Lcard, std::vector<std::string> &Ccard, std::vector<int> &Ncard);
 int DoCaenTests(Module &List);
 int SetupWeinerSoftTrigger(CamacCrate* CC, Module &List);
-int ReadRates(Module &List, double countmins, std::ofstream &data);
+int ReadRates(Module &List, double countsecs, std::ofstream &data);
 int IntializeADCs(Module &List, std::vector<std::string> &Lcard, std::vector<std::string> &Ccard, bool defaultinit);
 int WaitForAdcData(Module &List);
 int ReadAdcVals(Module &List, std::map<int, int> &ADCvals);
+int LoadTestSetup(std::string configfile, TestVars thesettings);
+
+// MEASUREMENT FUNCTIONS
+int MeasureScalerRates(Module &List, TestVars testsettings, bool append);
+int MeasurePulseHeightDistribution(Module &List, CamacCrate* CC, TestVars testsettings, std::string outputfilename);
 
 // CONSTANTS
 unsigned int masks[] = {0x01, 0x02, 0x04, 0x08, 
@@ -78,58 +105,21 @@ unsigned int masks[] = {0x01, 0x02, 0x04, 0x08,
 
 int main(int argc, char* argv[]){
 	
-	int i_channel;
-	std::string FileName;
-	int numacquisitions=10000;
-	//std::cout << "Please enter number of writes to the action register: ";
-	//std::cin >> numacquisitions;
-	
 	// ***************************************
-	// GAIN MEASUREMENT ARGS
+	// TEST SETUP ARGS
 	// ***************************************
-	if(argc<3||argc>4){
-		std::cout<<"Usage: ./main ADC_channel outfilename acquisitions=10000"<<std::endl;
+	std::string testconfigfile;
+	if(argc!=2){
+		std::cout<<"Usage: ./main configfile"<<std::endl;
 		return 0;
 	}
 	for (int i_arg=1;i_arg<argc;i_arg++){
-		if (i_arg==1) i_channel = (int)*argv[i_arg]-'0';
-		else if (i_arg==2) FileName = argv[i_arg];
-		else if (i_arg==3) numacquisitions=atoi(argv[i_arg]);
-		else std::cout <<"too many arguments, aborting."<<std::endl;
+		     if (i_arg==1) testconfigfile = argv[i_arg];
+//		else if (i_arg==2) i_channel = (int)*argv[i_arg]-'0';
+//		else if (i_arg==3) numacquisitions=atoi(argv[i_arg]);
 	}
-	std::cout<<"Arguments are: "<<std::endl;
-	std::cout<<"Channel "<<i_channel<<", "<<"filename "<<FileName<<std::endl;
-	std::cout << std::endl << "There will be " << numacquisitions << " writes\n";
-	
-	
-//	// ***************************************
-//	// COOLDOWN MEASUREMENT ARGS
-//	// ***************************************
-//	if(argc<3){
-//		std::cout<<"usage: ./main [test_duration_in_hours] [time_between_samples_in_minutes] [count_time_in_seconds=60]"<<std::endl;
-//		return 0;
-//	}
-//	// extract test stats
-//	double testhours = atoi(argv[1]);
-//	double testmins = testhours*60.;
-//	double timeBet = atof(argv[2]);
-//	double countmins = (argc>3) ? (double(atoi(argv[3]))/60.) : 1.;
-//	double onesampletime = timeBet+countmins; // time between readings is wait time + count time
-//	int numacquisitions = (testmins/onesampletime) + 1;
-//	std::cout << "The scalers will be read " << numacquisitions << " times over " << testhours << " hours";
-//	std::cout << " with " << timeBet << " minutes between readouts, and ";
-//	std::cout << countmins << " minutes used to determine scalar rate.\n";
-//	// ***************************************
-	
-//	// Ask User for PMT IDs
-//	// =====================
-//	std::string pmtID1;
-//	std::string pmtID2;
-//	std::cout << "Please enter first PMT ID: ";
-//	std::cin >> pmtID1;
-//	std::cout << std::endl << "Enter second PMT ID: ";
-//	std::cin >> pmtID2;
-//	std::cout << std::endl;
+	TestVars testsettings;
+	int setupok = LoadTestSetup(testconfigfile, testsettings);
 	
 	// Open a ROOT TApplication for live plotting
 	// ==========================================
@@ -167,189 +157,51 @@ int main(int argc, char* argv[]){
 	// ================
 	//int caen_test_result = DoCaenTests(List);
 	
-	// ***************************************
-	// GAIN MEASUREMENT SETUP
-	// ***************************************
-	
-	// Open File for ADC readouts
-	// =========================
-	std::string ADCFileName = FileName+".txt";
-	std::ofstream ADCRead;
-	ADCRead.open(ADCFileName.c_str());
-	TCanvas* canv = new TCanvas("canv","canv",900,600);
-	canv->cd();
-	TH2D *hist = new TH2D("hist","ADC values : entry",100,0,numacquisitions,100,10,100);
-	
 	// Set up CCUSB NIM output for triggering
 	// ======================================
 	long RegStore;
 	CC->ActionRegRead(RegStore);
 	long RegActivated   = RegStore | 0x02;   // Modify bit 1 of the register to "1" (CCUSB Trigger)
-	long RegDeactivated = RegStore & ~0x02;  // Modify bit 1 to 0 (Deassert CCUSB trigger. Not strictly needed)
 	int weiner_softrigger_setup_ok = SetupWeinerSoftTrigger(CC, List);
 	
-	// Set printout verbosity
-	// ======================
-	int printfreq=500;
-	int plotfreq=100;
+	// Set Discriminator threshold
+	// ===========================
+	if(testsettings.thresholdmode!=0){
+		List.CC["DISC"].at(0)->EnableProgrammedThreshold();
+		List.CC["DISC"].at(0)->WriteThresholdValue(testsettings.threshold);
+	}
+	else List.CC["DISC"].at(0)->EnableFPthreshold();
 	
-//	// ***************************************
-//	// COOLDOWN MEASUREMENT SETUP
-//	// ***************************************
-//	//Open up a new file called data.txt
-//	std::ofstream data;
-//	data.open ("data.txt");
-//	data << "PMTID1 " << pmtID1 << ", PMTID2 " << pmtID2 << ", " << std::endl;
-//	int thethreshold;
-//	List.CC["DISC"].at(0)->ReadThreshold(thethreshold);
-//	data << "Discriminator threshold "<<(thethreshold)<<" mV"<<std::endl;
-//	data << "timestamp, ch1 reading, ch1 rate, ch2 reading, ch2 rate, "
-//					"ch3 reading, ch3 rate, ch4 reading, ch4 rate"<<std::endl;
-//	
-//	// just for trials
-//	//std::cout << "Test Channel: " << List.CC["SCA"].at(0)->TestChannel(3) << std::endl;
-//	//std::vector<int> thresholds{30,40,50,60,70,80,90,100,200,300,400};
-//	//numacquisitions=thresholds.size();
-//	// ***************************************
-	
+	// Run cooldown test
+	// =================
+	if(testsettings.cooldownfilenamebase!="NA"){
+		bool appendtofile=false;  // append/overwrite any existing file. TODO ALERT USER IF FILE EXISTS
+		int cooldownok = MeasureScalerRates(List, testsettings, appendtofile);
+	}
 	
 	// =========
 	// MAIN LOOP
 	// =========
 	int command_ok;
-	for (int i = 0; i < numacquisitions; i++)    // loop over readings
+	for (int i = 0; i < testsettings.gainVoltages.size(); i++)    // loop over readings
 	{
 		//break;
 		
-//		// ***************************************
-//		// COOLDOWN MEASUREMENT
-//		// ***************************************
-//		// threshold trials
-//		// ----------------
-//		//std::cout<<"setting discriminator threshold to 30"<<std::endl;
-//		//thethreshold=thresholds.at(i);
-//		//List.CC["DISC"].at(0)->WriteThresholdValue(thethreshold);
-//		//List.CC["DISC"].at(0)->ReadThreshold(thethreshold);
-//		//std::cout<<"Threshold is now: "<<thethreshold<<std::endl;
-//		
-//		// Read rates and write to file
-//		// ----------------------------
-//		int readscalerok = ReadRates(List, countmins, data);  // TODO read >1 scaler?
+		// Set voltages
+		// ============
+		double testvoltage = testsettings.gainVoltages.at(i);
+//		int hvok = SetHV(testvoltage);
 		
-		// ***************************************
-		// GAIN MEASUREMENT
-		// ***************************************
-		// Register trials
-		// ----------------
-		//int adcinitializeok = IntializeADCs(List, Lcard, Ccard);     // done in constructor, debug only
-		
-		// Clear ADCs
-		// ----------
-		//std::cout<<"clearing ADCs"<<std::endl;
-		for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
-			command_ok = List.CC["ADC"].at(cardi)->ClearAll();
-			//std::cout<<"Clear module " << cardi <<": " << ((command_ok) ? "OK" : "FAILED") << std::endl;
-		}
-		usleep(100);
-		
-		// Fire LED! (and gate ADCs)
-		// -------------------------
-		command_ok = CC->ActionRegWrite(RegActivated);
-		//std::cout<<"Firing LED " << ((command_ok) ? "OK" : "FAILED") << std::endl;
-		
-		// Or run internal test
-		// --------------------
-		// This connects internal charge generator and pulses the gate. Values are ready to read.
-		//for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
-		//	command_ok = List.CC["ADC"].at(cardi)->InitTest();
-		//	std::cout<<"test start "<<i<<" " << ((command_ok) ? "OK" : "FAILED") << std::endl;
-		//}
-		
-		usleep(1000);
-		
-		// Poll ADCs for data availability
-		// -------------------------------
-		int adcsgotdata = WaitForAdcData(List);
-		
-		// Put timestamp in file
-		// ---------------------
-		std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
-		time_t tt;
-		tt = std::chrono::system_clock::to_time_t ( time );
-		std::string timeStamp = ctime(&tt);
-		timeStamp.erase(timeStamp.find_last_not_of(" \t\n\015\014\013")+1);
-		ADCRead << timeStamp;
-		
-		// Read ADC values
-		// ---------------
-		//std::cout<<"Reading ADCvals at " << timeStamp<<std::endl;
-		 std::map<int, int> ADCvals;
-		 int gotadcdata = ReadAdcVals(List, ADCvals);
-		
-		// Put the data into file, print if desired
-		// ----------------------------------------
-		for( std::map<int,int>::iterator aval = ADCvals.begin(); aval!=ADCvals.end(); aval++){
-			ADCRead << ", ";
-			ADCRead << aval->second;
-			if (i%printfreq==0) {
-				std::cout << /*aval->first << "=" <<*/ aval->second;
-				if(aval!=ADCvals.begin()) std::cout<<", ";
-			}
-		}
-		ADCRead << std::endl;
-		if (i%printfreq==0) { std::cout<<std::endl; }
-		
-		// Plot the data for live view
-		// ---------------------------
-		if(hist){
-			hist->Fill(i,ADCvals.at(i_channel));
-			if (i%plotfreq==0) {hist->Draw("colz");
-			canv->Modified();
-			canv->Update();
-			gSystem->ProcessEvents();
-			}
-		}
-		
-//		// ***************************************
-//		// COOLDOWN MEASUREMENT DELAY
-//		// ***************************************
-//		//data << "End of Loop " << i << std::endl;
-//		//For loop will now wait for user-specified time
-//		std::cout<<"Waiting "<<timeBet<<" mins to next reading"<<std::endl;
-//		if(timeBet>1){
-//			// for monitoring the program, printout every minute
-//			for(int count2=0; count2 < timeBet; count2++){
-//				std::cout << (timeBet-count2) << " minutes to next reading..." << std::endl;
-//				//std::this_thread::sleep_for (std::chrono::seconds(1));
-//				double minuteinmicroseconds = 60.*1000000.;
-//				usleep(minuteinmicroseconds);
-//			}
-//		} else {
-//			double sleeptimeinmicroseconds = timeBet*60.*1000000.;
-//			usleep(sleeptimeinmicroseconds);
-//		}
-		
+		// Do Gain Measurement
+		// ===================
+		char voltageasstring[10];
+		sprintf(voltageasstring, "%f", testvoltage);
+		std::string gainfilename = testsettings.gainfilenamebase + std::string(voltageasstring)+"V";
+		int gainmeasureok = MeasurePulseHeightDistribution(List, CC, testsettings, gainfilename);
 		
 	}
 	
-	std::cout<<"End of data taking, closing files"<<std::endl;
-	
-//	// ***************************************
-//	// COOLDOWN CLEANUP
-//	// ***************************************
-//	data.close();//close data file
-	
-	// ***************************************
-	// GAIN CLEANUP
-	// ***************************************
-	ADCRead.close();
-	
-	// Save PDF version of histogram
-	std::stringstream ss_channel;
-	ss_channel<<i_channel;
-	std::string str_channel = ss_channel.str();
-	std::string adc_pdf = FileName+"_ch"+str_channel+"_stability.pdf";
-	canv->SaveAs(adc_pdf.c_str());
+	std::cout<<"End of data taking"<<std::endl;
 	
 	Lcard.clear();
 	Ncard.clear();
@@ -362,6 +214,259 @@ int main(int argc, char* argv[]){
 //////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////
+
+// ***************************************************************************
+//                             PULSE RATE TEST
+// ***************************************************************************
+int MeasureScalerRates(Module &List, TestVars testsettings, bool append)
+{
+	// ***************************************
+	// COOLDOWN MEASUREMENT ARGS
+	// ***************************************
+	// extract arguments from test config struct
+	std::string outputfilename = testsettings.cooldownfilenamebase;
+	int totalmins = testsettings.cooldowntotalmins;
+	double countsecs = testsettings.cooldowncountsecs;
+	double loopsecs = testsettings.cooldownloopsecs;
+	std::vector<std::string> PMTNames = testsettings.pmtNames;
+	int nummeasurements = totalmins/(loopsecs/60.);
+	double waitmins = (loopsecs-countsecs)/60.;
+	
+	std::cout << "The scalers will be read " << nummeasurements;
+	std::cout << " times with " << countsecs << " seconds used to determine scalar rate and ";
+	std::cout << waitmins << " minutes of wait time between readouts\n";
+	// ***************************************
+	
+	// ***************************************
+	// COOLDOWN MEASUREMENT SETUP
+	// ***************************************
+	//Open up a new file
+	std::string CooldownFileName = outputfilename+".csv";
+	std::ofstream data;
+	std::ios_base::openmode writemode = (append) ? std::ofstream::app : std::ofstream::out;
+	data.open (CooldownFileName.c_str(), writemode);
+	data << "PMT_IDs"<<std::endl;
+	for(int pmti=0; pmti<PMTNames.size(); pmti++){
+		data << PMTNames.at(pmti) << ", ";
+	}
+	data << std::endl;
+	int thethreshold;
+	List.CC["DISC"].at(0)->ReadThreshold(thethreshold);
+	data << "Discriminator threshold "<<(thethreshold)<<" mV"<<std::endl
+			 << "timestamp, ch1 reading, ch1 rate, ch2 reading, ch2 rate, "
+			 << "ch3 reading, ch3 rate, ch4 reading, ch4 rate"<<std::endl;
+	
+	// just for trials
+	//std::cout << "Test Channel: " << List.CC["SCA"].at(0)->TestChannel(3) << std::endl;
+	//std::vector<int> thresholds{30,40,50,60,70,80,90,100,200,300,400};
+	//nummeasurements=thresholds.size();
+	// ***************************************
+
+	for(int i=0; i<nummeasurements; i++){
+		// ***************************************
+		// COOLDOWN MEASUREMENT
+		// ***************************************
+		// threshold trials
+		// ----------------
+		//std::cout<<"setting discriminator threshold to 30"<<std::endl;
+		//thethreshold=thresholds.at(i);
+		//List.CC["DISC"].at(0)->WriteThresholdValue(thethreshold);
+		//List.CC["DISC"].at(0)->ReadThreshold(thethreshold);
+		//std::cout<<"Threshold is now: "<<thethreshold<<std::endl;
+		
+		// Read rates and write to file
+		// ----------------------------
+		int readscalerok = ReadRates(List, countsecs, data);  // TODO read >1 scaler?
+		
+		// ***************************************
+		// COOLDOWN MEASUREMENT DELAY
+		// ***************************************
+		//For loop will now wait for user-specified time
+		if(waitmins==0) continue;
+		std::cout<<"Waiting "<<waitmins<<" mins to next reading"<<std::endl;
+		if(waitmins>1){
+			// for monitoring the program, printout every minute
+			for(int count2=0; count2 < waitmins; count2++){
+				std::cout << (waitmins-count2) << " minutes to next reading..." << std::endl;
+				//std::this_thread::sleep_for (std::chrono::seconds(1));
+				double minuteinmicroseconds = 60.*1000000.;
+				usleep(minuteinmicroseconds);
+			}
+		} else {
+			double sleeptimeinmicroseconds = waitmins*60.*1000000.;
+			usleep(sleeptimeinmicroseconds);
+		}
+	}
+	
+	// ***************************************
+	// COOLDOWN CLEANUP
+	// ***************************************
+	data.close();    //close data file
+	return 1;
+}
+
+// ***************************************************************************
+//                         PULSE HEIGHT DISTRIBUTION TEST
+// ***************************************************************************
+
+int MeasurePulseHeightDistribution(Module &List, CamacCrate* CC, TestVars testsettings, std::string outputfilename){
+	
+	// ***************************************
+	// GAIN MEASUREMENT ARGS
+	// ***************************************
+	// Extract arguments from test settings
+	int numacquisitions = testsettings.gainacquisitions;
+	std::vector<std::string> PMTNames = testsettings.pmtNames;
+	bool liveplot = testsettings.gainliveplot;
+	int plot_channel = testsettings.gainliveplotchannel;
+	int printfreq = testsettings.gainliveplotfreq;
+	int plotfreq = testsettings.gainprintfreq;
+	
+	std::cout << "The QDCs will be read " << numacquisitions<<" times"<<std::endl;
+	
+	// Open File for ADC readouts
+	// ==========================  // TODO check if file exists!!!
+	std::string ADCFileName = outputfilename+".csv";
+	std::ofstream ADCRead;
+	ADCRead.open(ADCFileName.c_str());
+	ADCRead << "PMT_IDs"<<std::endl;
+	for(int pmti=0; pmti<PMTNames.size(); pmti++){
+		ADCRead << PMTNames.at(pmti) << ", ";
+	}
+	ADCRead << std::endl;
+	
+	// Open the ROOT canvas for live plotting
+	// ======================================
+	TCanvas* canv;
+	TH2D* hist;
+	if(liveplot){
+		canv = new TCanvas("canv","canv",900,600);
+		canv->cd();
+		hist = new TH2D("hist","ADC values : entry",100,0,numacquisitions,100,10,100);
+	}
+	
+	// Get register settings with soft-trigger bit (un)set
+	// ===================================================
+	long RegStore;
+	CC->ActionRegRead(RegStore);
+	long RegActivated   = RegStore | 0x02;   // Modify bit 1 of the register to "1" (CCUSB Trigger)
+	long RegDeactivated = RegStore & ~0x02;  // Modify bit 1 to 0 (Deassert CCUSB trigger. Not strictly needed)
+	
+	// =========
+	// MAIN LOOP
+	// =========
+	int command_ok;
+	for (int i = 0; i < numacquisitions; i++)    // loop over readings
+	{
+		//break;
+		
+		// ***************************************
+		// GAIN MEASUREMENT
+		// ***************************************
+		
+		//int adcinitializeok = IntializeADCs(List, Lcard, Ccard);     // Register trials. Debug only.
+		
+		// Clear ADCs
+		// ==========
+		//std::cout<<"clearing ADCs"<<std::endl;
+		for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
+			command_ok = List.CC["ADC"].at(cardi)->ClearAll();
+			//std::cout<<"Clear module " << cardi <<": " << ((command_ok) ? "OK" : "FAILED") << std::endl;
+		}
+		usleep(100);
+		
+		// Fire LED! (and gate ADCs)
+		// =========================
+		command_ok = CC->ActionRegWrite(RegActivated);
+		//std::cout<<"Firing LED " << ((command_ok) ? "OK" : "FAILED") << std::endl;
+		
+		// Or run internal test
+		// ====================
+		// This connects internal charge generator and pulses the gate. Values are ready to read.
+		//for (int cardi = 0; cardi < List.CC["ADC"].size(); cardi++){
+		//	command_ok = List.CC["ADC"].at(cardi)->InitTest();
+		//	std::cout<<"test start "<<i<<" " << ((command_ok) ? "OK" : "FAILED") << std::endl;
+		//}
+		
+		usleep(1000);
+		
+		// Poll ADCs for data availability
+		// ===============================
+		int adcsgotdata = WaitForAdcData(List);
+		
+		// Put timestamp in file
+		// =====================
+		std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
+		time_t tt;
+		tt = std::chrono::system_clock::to_time_t ( time );
+		std::string timeStamp = ctime(&tt);
+		timeStamp.erase(timeStamp.find_last_not_of(" \t\n\015\014\013")+1);
+		ADCRead << timeStamp;
+		
+		// Read ADC values
+		// ===============
+		//std::cout<<"Reading ADCvals at " << timeStamp<<std::endl;
+		 std::map<int, int> ADCvals;
+		 int gotadcdata = ReadAdcVals(List, ADCvals);
+		
+		// Put ADC values into file
+		// ========================
+		for( std::map<int,int>::iterator aval = ADCvals.begin(); aval!=ADCvals.end(); aval++){
+			ADCRead << ", ";
+			ADCRead << aval->second;
+			if (i%printfreq==0) {
+				std::cout << /*aval->first << "=" <<*/ aval->second;
+				if(aval!=ADCvals.begin()) std::cout<<", ";
+			}
+		}
+		ADCRead << std::endl;
+		if (i%printfreq==0) { std::cout<<std::endl; }
+		
+		// Plot the data for live view
+		// ===========================
+		if(liveplot){
+			hist->Fill(i,ADCvals.at(plot_channel));
+			if (i%plotfreq==0){
+				hist->Draw("colz");
+				canv->Modified();
+				canv->Update();
+				gSystem->ProcessEvents();
+			}
+		}
+	}
+	
+	std::cout<<"End of ADC measurements, closing files"<<std::endl;
+	
+	// Save PDF version of histogram
+	// =============================
+	if(liveplot){
+		std::stringstream ss_channel;
+		ss_channel<<plot_channel;
+		std::string str_channel = ss_channel.str();
+		std::string adc_pdf = ADCFileName+"_ch"+str_channel+"_stability.pdf";
+		canv->SaveAs(adc_pdf.c_str());
+	}
+	
+	// ***************************************
+	// GAIN CLEANUP
+	// ***************************************
+	ADCRead.close();
+	
+	if(liveplot){
+		canv->Clear();
+		if(hist){ delete hist; hist=nullptr; }
+		if(canv){ delete canv; canv=nullptr; }
+	}
+	return 1;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////////////
+
+// ***************************************************************************
+//                             SUPPORT FUNCTIONS
+// ***************************************************************************
 
 // ***************************************
 // CONSTRUCT A CARD
@@ -615,7 +720,7 @@ int SetupWeinerSoftTrigger(CamacCrate* CC, Module &List){
 // ***************************************
 // MEASURE PULSE RATE WITH SCALER
 // ***************************************
-int ReadRates(Module &List, double countmins, std::ofstream data){
+int ReadRates(Module &List, double countsecs, std::ofstream &data){
 	std::cout << "Reading Scaler Rates" << std::endl;
 	int scalervals[4];
 	
@@ -632,7 +737,7 @@ int ReadRates(Module &List, double countmins, std::ofstream data){
 	
 	//waiting for requested duration for counts to accumulate
 	//std::this_thread::sleep_for(std::chrono::seconds(60));       // sleep_for supported on annielx01 g++ ver
-	unsigned int counttimeinmicroseconds = countmins*60.*1000000.; //1000000
+	unsigned int counttimeinmicroseconds = countsecs*60.*1000000.; //1000000
 	usleep(counttimeinmicroseconds);
 	
 	//Read the scalars
@@ -651,7 +756,7 @@ int ReadRates(Module &List, double countmins, std::ofstream data){
 		// write scalar values and rates to file
 		for(int chan=0; chan<4; chan++){
 			data << scalervals[chan] << ", ";
-			double darkRate = double (scalervals[chan]) / countmins;
+			double darkRate = double (scalervals[chan]) / countsecs;
 			data << darkRate;
 			if(chan<3) data << ", ";
 		}
@@ -799,5 +904,71 @@ int ReadAdcVals(Module &List, std::map<int, int> &ADCvals){
 		}
 	}
 	
+	return 1;
+}
+
+int LoadTestSetup(std::string configfile, TestVars thesettings){
+	std::ifstream fin (configfile.c_str());
+	std::string Line;
+	std::stringstream ssL;
+	
+	std::string sEmp;
+	std::string iEmp;
+	bool settingPmtNames=false;
+	bool settingGainVoltages=false;
+	thesettings.pmtNames.clear();
+	while (getline(fin, Line))
+	{
+	  //std::cout<<"conf 2"<<std::endl;
+		if (Line.empty()) continue;
+		if (Line.find("StartPmtNames") != std::string::npos) settingPmtNames = true;
+		if (Line.find("EndPmtNames") != std::string::npos) settingPmtNames = false;
+		if (Line.find("StartGainVoltages") != std::string::npos) settingGainVoltages = true;
+		if (Line.find("EndGainVoltages") != std::string::npos) settingGainVoltages = false;
+		
+		if (Line[0] == '#') continue;
+		else
+		{
+			Line.erase(Line.begin()+Line.find('#'), Line.end());
+			ssL.str("");
+			ssL.clear();
+			ssL << Line;
+			if (ssL.str() != "")
+			{
+				ssL >> sEmp >> iEmp;
+				// Read internal parameters from file here...
+				     if (sEmp == "CooldownFileNameBase") thesettings.cooldownfilenamebase = iEmp;
+				else if (sEmp == "CooldownTotalMins") thesettings.cooldowntotalmins = stof(iEmp);
+				else if (sEmp == "CooldownCountSecs") thesettings.cooldowncountsecs = stof(iEmp);
+				else if (sEmp == "CooldownLoopSecs") thesettings.cooldownloopsecs = stof(iEmp);
+				else if (sEmp == "CooldownVoltage") thesettings.cooldownvoltage = stof(iEmp);
+				else if (sEmp == "Threshold") thesettings.threshold = stoi(iEmp);
+				else if (sEmp == "ThresholdMode") thesettings.thresholdmode = stoi(iEmp); // potentiometer or programmed
+				
+				else if (sEmp == "GainFileNameBase") thesettings.gainfilenamebase = iEmp;
+				else if (sEmp == "GainNumAcquisitions") thesettings.gainacquisitions = stoi(iEmp);
+				else if (sEmp == "GainLivePlot") thesettings.gainliveplot = (iEmp=="1");
+				else if (sEmp == "GainLivePlotChannel") thesettings.gainliveplotchannel = stoi(iEmp);
+				else if (sEmp == "GainLivePlotFreq") thesettings.gainliveplotfreq = stoi(iEmp);
+				else if (sEmp == "GainPrintFreq") thesettings.gainprintfreq = stoi(iEmp);
+				
+				else if(settingPmtNames){
+					if(thesettings.pmtNames.size()>16){
+						std::cerr<<"WARNING: Too many PMT names specified!! Ignoring ID for PMT "
+										<<thesettings.pmtNames.size()<<"!"<<std::endl;
+					} else {
+						thesettings.pmtNames.push_back(iEmp);
+					}
+				}
+				
+				else if(settingGainVoltages){
+					thesettings.gainVoltages.push_back(stof(iEmp));
+				}
+				
+				else std::cerr<<"WARNING: Test Setup ignoring unknown configuration option \""<<sEmp<<"\""<<std::endl;
+			}
+		}
+	}
+	fin.close();
 	return 1;
 }
