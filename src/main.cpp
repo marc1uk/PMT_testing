@@ -11,12 +11,17 @@
 #include "usb.h"
 #include <string>
 #include <ctime>
-//#include <thread>
+#include <thread>
+#include <future>
 #include <chrono>
 #include <fstream>
 #include <iostream>
 #include <cstring>
 #include <bitset>
+
+#include <X11/Xlib.h>
+#include <X11/keysym.h>
+#include <X11/extensions/XTest.h> // /usr/include/X11/extensions/XTest.h
 
 #include "TFile.h"
 #include "TTree.h"
@@ -67,6 +72,15 @@ struct TestVars{        // For loading test settings from config file
 	int gainprintfreq=500;
 };
 
+// convenience struct for passing related parameters
+struct KeyPressVars{
+	public:
+	Display* display=nullptr;
+	Window winRoot;
+	Window winFocus;
+	int    revert;
+};
+
 // SUPPORT FUNCTIONS
 short SetRegBits(CamacCrate* CC, int regnum, int firstbit, int numbits, bool on_or_off);
 void PrintReg(CamacCrate* CC,int regnum);
@@ -80,10 +94,16 @@ int IntializeADCs(Module &List, std::vector<std::string> &Lcard, std::vector<std
 int WaitForAdcData(Module &List);
 int ReadAdcVals(Module &List, std::map<int, int> &ADCvals);
 int LoadTestSetup(std::string configfile, TestVars thesettings);
+XKeyEvent createKeyEvent(Display *display, Window &win, Window &winRoot, bool press, int keycode, int modifiers);
+void KeyPressInitialise(KeyPressVars thevars);
+void DoKeyPress(int KEYCODE, KeyPressVars thevars);
+void KeyPressFinalise(KeyPressVars thevars);
+void RunWavedump(std::promise<int> finishedin);
 
 // MEASUREMENT FUNCTIONS
 int MeasureScalerRates(Module &List, TestVars testsettings, bool append);
 int MeasurePulseHeightDistribution(Module &List, CamacCrate* CC, TestVars testsettings, std::string outputfilename);
+int MeausrePulseHeightDistributionDigitizer(KeyPressVars thekeypressvars, TestVars testsettings);
 
 // CONSTANTS
 unsigned int masks[] = {0x01, 0x02, 0x04, 0x08, 
@@ -127,6 +147,11 @@ int main(int argc, char* argv[]){
 	char arg1[] = "potato";
 	char* myargv[]={arg1};
 	TApplication *PMTTestStandApp = new TApplication("PMTTestStandApp",&myargc,myargv);
+	
+	// Get the X11 display for sending keypresses to other programs
+	// ============================================================
+	KeyPressVars thekeypressvars;
+	KeyPressInitialise(thekeypressvars);
 	
 	// Variables for holding the CamacCrate and derived class objects
 	// ==============================================================
@@ -197,11 +222,24 @@ int main(int argc, char* argv[]){
 		char voltageasstring[10];
 		sprintf(voltageasstring, "%f", testvoltage);
 		std::string gainfilename = testsettings.gainfilenamebase + std::string(voltageasstring)+"V";
-		int gainmeasureok = MeasurePulseHeightDistribution(List, CC, testsettings, gainfilename);
+		
+		// version that uses the QDC to measure pulse integral
+		// this fires the LED a given number of times, reads the pulse integrals and writes them to file
+		//int gainmeasureok = MeasurePulseHeightDistribution(List, CC, testsettings, gainfilename);
+		
+		// alternative version using the UCDavis digitizer
+		// this also fires the LED a given number of times, reads the waveforms and writes them to file
+		// an additional step is needed to read the file and calculate the integrals
+		int gainmeasureok = MeausrePulseHeightDistributionDigitizer(thekeypressvars, testsettings);
 		
 	}
 	
 	std::cout<<"End of data taking"<<std::endl;
+	
+	// Cleaup X11 stuff for sending keypresses
+	// =======================================
+	std::cout<<"Cleaning up X11"<<std::endl;
+	KeyPressFinalise(thekeypressvars);
 	
 	Lcard.clear();
 	Ncard.clear();
@@ -306,7 +344,65 @@ int MeasureScalerRates(Module &List, TestVars testsettings, bool append)
 }
 
 // ***************************************************************************
-//                         PULSE HEIGHT DISTRIBUTION TEST
+//               PULSE HEIGHT DISTRIBUTION TEST - Digitizer Ver
+// ***************************************************************************
+
+int MeausrePulseHeightDistributionDigitizer(KeyPressVars thekeypressvars, TestVars testsettings){
+	
+	// Run wavedump in an external thread so it can execute while we continue and send keys to it
+	// first create a promise we can use to hold until the external thread is done
+	std::promise<int> barrier;
+	std::future<int> barrier_future = barrier.get_future();
+	
+	// start the thread
+	std::cout<<"starting wavedump"<<std::endl;
+	std::thread athread(RunWavedump, std::move(barrier));
+	
+	// wait for just a little bit for wavedump to initialize
+	std::this_thread::sleep_for(std::chrono::seconds(3));
+	
+	// configure it
+	std::cout<<"enabling continuous saving"<<std::endl;
+	int KEYCODE = XK_W; // XK_s sends lower case s etc.
+	DoKeyPress(KEYCODE, thekeypressvars);
+	
+	// start it
+	std::cout<<"starting acquisition"<<std::endl;
+	KEYCODE = XK_s; // XK_s sends lower case s etc.
+	DoKeyPress(KEYCODE, thekeypressvars);
+	
+	// wait for data to accumulate
+	std::cout<<"waiting for data..."<<std::endl;
+	std::this_thread::sleep_for(std::chrono::seconds(5));
+	
+	// stop it
+	std::cout<<"stopping acquisition"<<std::endl;
+	KEYCODE = XK_s; // XK_s sends lower case s etc.
+	DoKeyPress(KEYCODE, thekeypressvars);
+	
+	// close it
+	std::cout<<"quitting wavedump"<<std::endl;
+	KEYCODE = XK_q; // XK_s sends lower case s etc.
+	DoKeyPress(KEYCODE, thekeypressvars);
+	
+	// wait for the external thread to indicate completion
+	std::cout<<"waiting for external thread to complete"<<std::endl;
+	std::chrono::milliseconds span(100);
+	std::future_status thestatus;
+	do {
+		thestatus = barrier_future.wait_for(span);
+	} while (thestatus==std::future_status::timeout);
+	// get the return to know if the external thead succeeded
+	std::cout << "thread returned " << barrier_future.get() << std::endl;
+	
+	// call join to cleanup the external thread
+	athread.join();
+	
+	return 1;
+}
+
+// ***************************************************************************
+//                  PULSE HEIGHT DISTRIBUTION TEST - QDC Ver
 // ***************************************************************************
 
 int MeasurePulseHeightDistribution(Module &List, CamacCrate* CC, TestVars testsettings, std::string outputfilename){
@@ -971,4 +1067,88 @@ int LoadTestSetup(std::string configfile, TestVars thesettings){
 	}
 	fin.close();
 	return 1;
+}
+
+// used to send keys to wavedump
+// Function to create a keyboard event
+XKeyEvent createKeyEvent(Display *display, Window &win,
+                           Window &winRoot, bool press,
+                           int keycode, int modifiers)
+{
+   XKeyEvent event;
+   
+   event.display     = display;
+   event.window      = win;
+   event.root        = winRoot;
+   event.subwindow   = None;
+   event.time        = CurrentTime;
+   event.x           = 1;
+   event.y           = 1;
+   event.x_root      = 1;
+   event.y_root      = 1;
+   event.same_screen = True;
+   event.keycode     = XKeysymToKeycode(display, keycode);
+   event.state       = modifiers;
+   
+   if(press)
+      event.type = KeyPress;
+   else
+      event.type = KeyRelease;
+   
+   return event;
+}
+
+void KeyPressInitialise(KeyPressVars thevars){
+		// Obtain the X11 display.
+	thevars.display = XOpenDisplay(0);
+	if(thevars.display == NULL){
+		std::cerr<<"Could not open X Display!"<<std::endl;
+		return;
+	}
+	// Note multiple calls to XOpenDisplay() with the same parameter return different handles;
+	// sending the press event with one handle and the release event with another will not work.
+	
+	// Get the root window for the current display.
+	thevars.winRoot = XDefaultRootWindow(thevars.display);
+	
+	// Prevent keydown-keyup generating multiple keypresses due to autorepeat
+	XAutoRepeatOff(thevars.display);
+	// XXX THIS AFFECTS THE GLOBAL X SETTINGS AFTER THE PROGRAM EXITS!!! XXX
+	// RE-ENABLE BEFORE CLOSING THE PROGRAM TO REVERT TO NORMAL BEHAVIOUR! XXX
+	
+	// Find the window which has the current keyboard focus.
+	XGetInputFocus(thevars.display, &thevars.winFocus, &thevars.revert);
+}
+
+void DoKeyPress(int KEYCODE, KeyPressVars thevars){
+	XKeyEvent event = createKeyEvent(thevars.display, thevars.winFocus, thevars.winRoot, true, KEYCODE, 0);
+	XTestFakeKeyEvent(event.display, event.keycode, True, CurrentTime);
+	XGetInputFocus(thevars.display, &thevars.winFocus, &thevars.revert);
+	XTestFakeKeyEvent(event.display, event.keycode, False, CurrentTime);
+}
+
+void KeyPressFinalise(KeyPressVars thevars){
+	// Re-enable auto-repeat
+	XAutoRepeatOn(thevars.display);
+	
+	// Cleanup X11 display
+	XCloseDisplay(thevars.display);
+}
+
+
+void RunWavedump(std::promise<int> finishedin){
+	
+	// if we need to pass between member functions in classes, must use std::move
+	// otherwise we can just call set_value on finishedin
+	std::promise<int> finished;
+	finished = std::promise<int>(std::move(finishedin));
+	
+	// start the external program, which will wait for a keypress then return
+	const char* command = "wavedump";
+	std::cout<<"calling command "<<command<<std::endl;
+	system(command);
+	std::cout<<"returned from command"<<std::endl;
+	
+	// release the barrier, allowing the caller to continue
+	finished.set_value(1);
 }

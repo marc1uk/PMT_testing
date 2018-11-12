@@ -6,7 +6,7 @@ LDFLAGS = `root-config --libs`
 all: main
 
 main: include/Camac lib/Camac
-	g++ $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) src/main.cpp -o main -I include -L lib -lCC -lm -lxx_usb -lJ8 -lL4 -lL5 -lC1 #-lL3 -lxx_usb
+	g++ $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) src/main.cpp -o main -I include -Llib -L/usr/lib/x86_64-linux-gnu -lCC -lm -lxx_usb -lJ8 -lL4 -lL5 -lC1 -lX11 -lpthread -lXtst #-lL3 -lxx_usb
 
 include/Camac:
 	@cp UserTools/camacinc/CamacCrate/CamacCrate.h include/
