@@ -23,6 +23,9 @@
 #include <X11/keysym.h>
 #include <X11/extensions/XTest.h> // /usr/include/X11/extensions/XTest.h
 
+#include "PMTTestingHVcontrol.h"
+#include "zmq.hpp"
+
 #include "TFile.h"
 #include "TTree.h"
 #include "TCanvas.h"
@@ -185,6 +188,10 @@ int main(int argc, char* argv[]){
 	// ================
 	//int caen_test_result = DoCaenTests(List);
 	
+	// Create class for doing ZMQ control of HV
+	// ========================================
+	PMTTestingHVcontrol* hvcontrol = new PMTTestingHVcontrol();
+	
 	// Set up CCUSB NIM output for triggering
 	// ======================================
 	long RegStore;
@@ -218,7 +225,7 @@ int main(int argc, char* argv[]){
 		// Set voltages
 		// ============
 		double testvoltage = testsettings.gainVoltages.at(i);
-//		int hvok = SetHV(testvoltage);
+		hvcontrol->SetVoltage(testvoltage);  // XXX XXX XXX
 		
 		// Do Gain Measurement
 		// ===================

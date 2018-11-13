@@ -1,0 +1,32 @@
+run --> batch that will be tested (batches of 6 PMTs)
+
+msg_type:
+
+read
+write
+kill
+clear
+map
+logs
+run
+get
+
+msg_property:
+
+vset
+vswmax
+imax
+enable
+name
+
+PMT name: (key)
+
+all
+active
+HVcard.HVchannel
+
+PMT value: (value)
+
+vset: in Volts
+current: SIstring
+enable: 1/0

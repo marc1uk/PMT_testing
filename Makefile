@@ -3,10 +3,16 @@ CXXFLAGS    = -g -std=c++0x -Wall -Wno-reorder -Wno-sign-compare -Wno-unused-var
 CPPFLAGS = `root-config --cflags`
 LDFLAGS = `root-config --libs`
 
+#ZMQInclude = -I../zeromq-4.0.7-master/include
+#ZMQLib = -L../zeromq-4.0.7-master/lib -lzmq
+
+ZMQInclude = -I/home/marc/LinuxSystemFiles/ToolAnalysis/ToolAnalysis/ToolDAQ/zeromq-4.0.7/include
+ZMQLib = -L/home/marc/LinuxSystemFiles/ToolAnalysis/ToolAnalysis/ToolDAQ/zeromq-4.0.7/lib -lzmq
+
 all: main
 
-main: include/Camac lib/Camac
-	g++ $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) src/main.cpp -o main -I include -Llib -L/usr/lib/x86_64-linux-gnu -lCC -lm -lxx_usb -lJ8 -lL4 -lL5 -lC1 -lX11 -lpthread -lXtst #-lL3 -lxx_usb
+main: include/Camac lib/Camac include/HV lib/HV
+	g++ $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) src/main.cpp -o main -I include -I/home/annie_local/Downloads/ $(ZMQInclude) $(ZMQLib) -Llib -L/usr/lib/x86_64-linux-gnu -lCC -lm -lxx_usb -lJ8 -lL4 -lL5 -lC1 -lX11 -lpthread -lXtst -lHV #-lL3 -lxx_usb
 
 include/Camac:
 	@cp UserTools/camacinc/CamacCrate/CamacCrate.h include/
@@ -18,6 +24,12 @@ include/Camac:
 	@cp UserTools/camacinc/Lecroy4413/Lecroy4413.h include/
 	@cp UserTools/camacinc/XXUSB/libxxusb.h include/
 	@cp UserTools/camacinc/XXUSB/usb.h include/
+
+include/HV:
+	@cp UserTools/ZMQ_HV_Control/PMTTestingHVcontrol.h include/
+
+lib/HV:
+	g++ $(CXXFLAGS) -shared -fPIC UserTools/ZMQ_HV_Control/PMTTestingHVcontrol.cpp -I include $(ZMQInclude) $(ZMQLib) -o lib/libHV.so
 
 lib/Camac:
 #	@cp UserTools/camacinc/makelib/libxx_usb.so lib/
