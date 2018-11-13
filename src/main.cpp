@@ -29,10 +29,11 @@
 #include "TFile.h"
 #include "TTree.h"
 #include "TCanvas.h"
+#include "TGraph.h"
 #include "TH1.h"
 #include "TH2.h"
 #include "TF1.h"
-
+#include "TROOT.h"
 #include "TApplication.h"
 #include "TSystem.h"
 
@@ -105,6 +106,7 @@ void KeyPressFinalise(KeyPressVars thevars);
 void RunWavedump(std::promise<int> finishedin);
 int LoadWavedumpFile(std::string filepath, std::vector<std::vector<std::vector<double>>> &data);
 int MeasureIntegralsFromWavedump(std::string waveformfile, std::vector<TBranch*> branches);
+int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>> gainvector);
 
 // MEASUREMENT FUNCTIONS
 int MeasureScalerRates(Module &List, TestVars testsettings, bool append);
@@ -153,6 +155,7 @@ int main(int argc, char* argv[]){
 	char arg1[] = "potato";
 	char* myargv[]={arg1};
 	TApplication *PMTTestStandApp = new TApplication("PMTTestStandApp",&myargc,myargv);
+	TCanvas* c1 = new TCanvas();
 	
 	// Get the X11 display for sending keypresses to other programs
 	// ============================================================
@@ -218,6 +221,7 @@ int main(int argc, char* argv[]){
 	// MAIN LOOP
 	// =========
 	int command_ok;
+	std::vector<std::vector<double>> gainvector(4);               // for plotting gain vs HV
 	for (int i = 0; i < testsettings.gainVoltages.size(); i++)    // loop over readings
 	{
 		//break;
@@ -225,7 +229,7 @@ int main(int argc, char* argv[]){
 		// Set voltages
 		// ============
 		double testvoltage = testsettings.gainVoltages.at(i);
-		hvcontrol->SetVoltage(testvoltage);  // XXX XXX XXX
+		hvcontrol->SetVoltage(testvoltage);  // sets the voltage of the 'active' group
 		
 		// Do Gain Measurement
 		// ===================
@@ -260,10 +264,25 @@ int main(int argc, char* argv[]){
 		// we call Fill on branches, so need to manually set the number of TTree entries
 		roottout->SetEntries(branchpointers.at(0)->GetEntries());
 		roottout->Write();
+		
+		// Plot the pulse height distributions and measure the gains
+		int measuregainsok = MakePulseHeightDistribution(roottout, gainvector);
+		
+		// we're done with the file now, cleanup and move to the next voltage
 		rootfout->Close();
 		delete rootfout;       // also cleans up roottout
 		
-		
+	}
+	
+	// make plot of gain vs HV for these 4 PMTs
+	for(int channeli=0; channeli<4; channeli++){
+		TGraph gainvsHV(testsettings.gainVoltages.size(),
+										testsettings.gainVoltages.data(),
+										gainvector.at(channeli).data());
+		gainvsHV.SaveAs(TString::Format("Gain_Vs_HV_%s.C",testsettings.pmtNames.at(channeli).c_str()));
+		c1->cd();
+		gainvsHV.Draw();
+		c1->SaveAs(TString::Format("Gain_Vs_HV_%s.pdf",testsettings.pmtNames.at(channeli).c_str()));
 	}
 	
 	std::cout<<"End of data taking"<<std::endl;
@@ -273,6 +292,13 @@ int main(int argc, char* argv[]){
 	std::cout<<"Cleaning up X11"<<std::endl;
 	KeyPressFinalise(thekeypressvars);
 	
+	// Clean up ROOT stuff
+	// ===================
+	if(c1) delete c1;
+	if(PMTTestStandApp){ PMTTestStandApp->Terminate(); delete PMTTestStandApp; }
+	
+	// Clean up CAMAC stuff
+	// ====================
 	Lcard.clear();
 	Ncard.clear();
 }
@@ -1373,4 +1399,61 @@ int MeasureIntegralsFromWavedump(std::string waveformfile, std::vector<TBranch*>
 	// cleanup
 	if(hwaveform) delete hwaveform;
 	return 1;
+}
+
+int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>> gainvector){
+	
+	// loop over the channels
+	for(int channelnum=0; channelnum<4; channelnum++){
+		
+		std::string branchname = "Channel" + std::to_string(channelnum);
+		std::string drawname = branchname + ">>ahist";
+#ifndef DRAWPHD
+		thetree->Draw(drawname.c_str(), "goff");
+#else
+		thetree->Draw(drawname.c_str());
+#endif
+		TH1D* ahistp = (TH1D*)gROOT->FindObject("ahist");
+		
+		// to do a double-gaus fit we need to define the fit function first
+		double fitrangelo = ahistp->GetXaxis()->GetBinLowEdge(0);  // XXX FIT RANGE MAY NEED TUNING
+		double fitrangeup = ahistp->GetXaxis()->GetBinUpEdge(ahistp->GetNbinsX());
+		TF1 fit_func("fit_func","gaus(0)+gaus(3)",fitrangelo,fitrangeup);
+		// unfortunately we also need to give it initial values for it to work
+		double gaus1amp = ahistp->GetEntries()/10;
+		double gaus1centre = ahistp->GetMean();
+		double gaus1width = ahistp->GetEntries()/1000;
+		double gaus2amp = ahistp->GetEntries()/50;
+		double gaus2centre = ahistp->GetMean()*1.5;
+		double gaus2width = ahistp->GetEntries()/500;
+		fit_func.SetParameters(gaus1amp, gaus1centre, gaus1width, gaus2amp, gaus2centre, gaus2width);
+		
+		// Do the fit
+#ifndef DRAWPHD
+		ahistp->Fit("fit_func","QN");  // use option R to limit fitting range. N for no gfx
+#else
+		ahistp->Fit("fit_func","Q");  // use option R to limit fitting range. N for no gfx
+#endif
+		
+		// Extract the gain
+		double mean_pedestal = fit_func.GetParameter(1);
+		double mean_spe = fit_func.GetParameter(4);
+		double gain = (mean_spe-mean_pedestal)*0.25E-12/1.6E-19;  //0.25pC/count (FIXME DT5054B), 1.6E-19C for 1*e-
+		//std::cout <<"Pedestal mean is: "<<mean_pedestal<<std::endl;
+		//std::cout <<"SPE mean is: "<<mean_spe<<std::endl;
+		//std::cout <<"Gain is: "<<gain<<std::endl;
+		
+		thetree->GetCurrentFile()->cd();
+		ahistp->Write(TString::Format("phd_%d",channelnum));
+		
+		std::string filenamebase = thetree->GetCurrentFile()->GetName();
+		filenamebase = filenamebase.substr(0,filenamebase.length()-5); // strip '.root' extension
+		std::string QDCfilestring = filenamebase + "_ch" + std::to_string(channelnum) + ".pdf";
+		ahistp->SaveAs(QDCfilestring.c_str());
+		
+		gainvector.at(channelnum).push_back(gain);
+		
+	} // end loop over channels
+	
+	return 0;
 }
