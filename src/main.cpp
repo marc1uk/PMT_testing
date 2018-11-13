@@ -28,6 +28,7 @@
 #include "TCanvas.h"
 #include "TH1.h"
 #include "TH2.h"
+#include "TF1.h"
 
 #include "TApplication.h"
 #include "TSystem.h"
@@ -99,11 +100,13 @@ void KeyPressInitialise(KeyPressVars thevars);
 void DoKeyPress(int KEYCODE, KeyPressVars thevars);
 void KeyPressFinalise(KeyPressVars thevars);
 void RunWavedump(std::promise<int> finishedin);
+int LoadWavedumpFile(std::string filepath, std::vector<std::vector<std::vector<double>>> &data);
+int MeasureIntegralsFromWavedump(std::string waveformfile, std::vector<TBranch*> branches);
 
 // MEASUREMENT FUNCTIONS
 int MeasureScalerRates(Module &List, TestVars testsettings, bool append);
 int MeasurePulseHeightDistribution(Module &List, CamacCrate* CC, TestVars testsettings, std::string outputfilename);
-int MeausrePulseHeightDistributionDigitizer(KeyPressVars thekeypressvars, TestVars testsettings);
+int MeausrePulseHeightDistributionDigitizer(CamacCrate* CC, KeyPressVars thekeypressvars, TestVars testsettings);
 
 // CONSTANTS
 unsigned int masks[] = {0x01, 0x02, 0x04, 0x08, 
@@ -226,11 +229,33 @@ int main(int argc, char* argv[]){
 		// version that uses the QDC to measure pulse integral
 		// this fires the LED a given number of times, reads the pulse integrals and writes them to file
 		//int gainmeasureok = MeasurePulseHeightDistribution(List, CC, testsettings, gainfilename);
+		// saves data to a txt file, would need integration from plotQDChisto.cpp
 		
 		// alternative version using the UCDavis digitizer
 		// this also fires the LED a given number of times, reads the waveforms and writes them to file
-		// an additional step is needed to read the file and calculate the integrals
-		int gainmeasureok = MeausrePulseHeightDistributionDigitizer(thekeypressvars, testsettings);
+		int gainmeasureok = MeausrePulseHeightDistributionDigitizer(CC, thekeypressvars, testsettings);
+		
+		// Create a ROOT file to save the pulse height distribution data
+		gainfilename += ".root";
+		TFile* rootfout = new TFile(gainfilename.c_str(),"RECREATE");
+		TTree* roottout = new TTree("pmt","PMT Test Results");
+		std::vector<TBranch*> branchpointers;
+		int pulseintegral;
+		TBranch* theaddress=nullptr;
+		branchpointers.push_back(roottout->Branch("Channel0",&pulseintegral));
+		branchpointers.push_back(roottout->Branch("Channel1",&pulseintegral));
+		branchpointers.push_back(roottout->Branch("Channel2",&pulseintegral));
+		branchpointers.push_back(roottout->Branch("Channel3",&pulseintegral));
+		
+		// read the waveforms, subtract pedestal and calculate the integral. Fill into the tree.
+		int calculateintegralsok = MeasureIntegralsFromWavedump("wave0.txt", branchpointers);
+		
+		// we call Fill on branches, so need to manually set the number of TTree entries
+		roottout->SetEntries(branchpointers.at(0)->GetEntries());
+		roottout->Write();
+		rootfout->Close();
+		delete rootfout;       // also cleans up roottout
+		
 		
 	}
 	
@@ -347,7 +372,7 @@ int MeasureScalerRates(Module &List, TestVars testsettings, bool append)
 //               PULSE HEIGHT DISTRIBUTION TEST - Digitizer Ver
 // ***************************************************************************
 
-int MeausrePulseHeightDistributionDigitizer(KeyPressVars thekeypressvars, TestVars testsettings){
+int MeausrePulseHeightDistributionDigitizer(CamacCrate* CC, KeyPressVars thekeypressvars, TestVars testsettings){
 	
 	// Run wavedump in an external thread so it can execute while we continue and send keys to it
 	// first create a promise we can use to hold until the external thread is done
@@ -371,9 +396,20 @@ int MeausrePulseHeightDistributionDigitizer(KeyPressVars thekeypressvars, TestVa
 	KEYCODE = XK_s; // XK_s sends lower case s etc.
 	DoKeyPress(KEYCODE, thekeypressvars);
 	
-	// wait for data to accumulate
-	std::cout<<"waiting for data..."<<std::endl;
-	std::this_thread::sleep_for(std::chrono::seconds(5));
+	// we need to fire the LED (which will also trigger acquisition)
+	// Get register settings with soft-trigger bit (un)set
+	// ===================================================
+	long RegStore;
+	CC->ActionRegRead(RegStore);
+	long RegActivated   = RegStore | 0x02;   // Modify bit 1 of the register to "1" (CCUSB Trigger)
+	
+	for(int triggeri=0; triggeri<testsettings.gainacquisitions; triggeri++){
+		// Fire LED! (and gate ADCs)
+		// =========================
+		int command_ok = CC->ActionRegWrite(RegActivated);
+		//std::cout<<"Firing LED " << ((command_ok) ? "OK" : "FAILED") << std::endl;
+		usleep(1000); // wait for 1ms  XXX may need tuning
+	}
 	
 	// stop it
 	std::cout<<"stopping acquisition"<<std::endl;
@@ -729,7 +765,7 @@ int ConstructCards(Module &List, std::vector<std::string> &Lcard, std::vector<st
 	//std::cout << "Primary scaler is in slot ";
 	//std::cout << List.CC["SCA"].at(0)->GetSlot() << std::endl;
 	
-	return 1; // TODO error handling
+	return 1;
 }
 
 // ***************************************
@@ -810,7 +846,7 @@ int SetupWeinerSoftTrigger(CamacCrate* CC, Module &List){
 	//List.CC["ADC"].at(0)->GetPedestal();             // retrieve pedastals into Ped member
 	//List.CC["ADC"].at(0)->PrintPedestal();           // print out pedestals
 	
-	return 1; // TODO error checking
+	return 1;// todo error checking
 }
 
 // ***************************************
@@ -860,7 +896,7 @@ int ReadRates(Module &List, double countsecs, std::ofstream &data){
 	data << std::endl;
 	//std::cout << "Done writing to file" << std::endl;
 	
-	return 1; // TODO error checking
+	return 1;// todo error checking
 }
 
 // ***************************************
@@ -915,7 +951,7 @@ int IntializeADCs(Module &List, std::vector<std::string> &Lcard, std::vector<std
 			//usleep(1000); // sleep 1ms, and rest 
 		}
 		
-		return 1;  // TODO error checking
+		return 1; // todo error checking
 }
 
 // ***************************************
@@ -1151,4 +1187,183 @@ void RunWavedump(std::promise<int> finishedin){
 	
 	// release the barrier, allowing the caller to continue
 	finished.set_value(1);
+}
+
+int LoadWavedumpFile(std::string filepath, std::vector<std::vector<std::vector<double>>> &data){
+	
+	// data is a 3-deep vector of: readout, channel, datavalue
+	std::ifstream fin (filepath.c_str());
+	std::string Line;
+	std::stringstream ssL;
+	
+	int value;
+	int readout=0;
+	int channel=0;
+	int recordlength;
+	std::string dummy1, dummy2;
+	bool dataline=false;
+	
+	std::cout<<"Loading data"<<std::endl;
+	while (getline(fin, Line))
+	{
+		if (Line.empty()) continue;
+		//if (Line[0] == '#') continue;
+		if (Line.find("Record") != std::string::npos){
+			// start of new readout
+			ssL.str("");
+			ssL.clear();
+			ssL << Line;  // line should be of the form "Record Length: 1030"
+			if (ssL.str() != "")
+			{
+				ssL >> dummy1 >> dummy2 >> recordlength;
+			}
+			dataline=false;  // mark that we're reading the header
+		}
+		else if (Line.find("Channel") != std::string::npos){
+			ssL.str("");
+			ssL.clear();
+			ssL << Line;  // line should be of the form "Channel: 0"
+			if (ssL.str() != "")
+			{
+				ssL >> dummy1 >> channel;
+			}
+		}
+		else if (Line.find("Event") != std::string::npos){
+			ssL.str("");
+			ssL.clear();
+			ssL << Line;  // line should be of the form "Event Number: 1"
+			if (ssL.str() != "")
+			{
+				ssL >> dummy1 >> dummy2 >> readout;
+			}
+		}
+		else if (Line.find("offset") != std::string::npos){
+			// last header line, mark the next line as start of values
+			// not necessary to actually read the line
+			dataline=true;
+		}
+		else if( (Line.find("BoardID") != std::string::npos) ||
+				 (Line.find("Pattern") != std::string::npos) ||
+				 (Line.find("Trigger") != std::string::npos) ){
+			// other header lines, ignore. redundant, but hey.
+		}
+		else if(dataline)
+		{
+			ssL.str("");
+			ssL.clear();
+			ssL << Line;
+			if (ssL.str() != "")
+			{
+				ssL >> value;
+				if(data.at(channel).size()<(readout+1)){ data.at(channel).push_back(std::vector<double>{}); }
+				data.at(channel).at(readout).push_back(value);
+			}
+		}
+	}
+	fin.close();
+	std::cout<<"finished loading data"<<std::endl;
+	return 1;
+}
+
+int MeasureIntegralsFromWavedump(std::string waveformfile, std::vector<TBranch*> branches){
+	
+	int maxreadouts=100; // process only the first n readouts
+	bool verbose = false;
+	
+	std::vector<std::vector<std::vector<double>>> alldata(4);  // channel, readout, datavalue
+	int loadok = LoadWavedumpFile(waveformfile, alldata);
+	
+	// histogram, used for fitting for pedestal
+	TH1D* hwaveform=nullptr;
+	// range of histogram values. should be sufficient for all data
+	double maxvalue = 000;  // XXX XXX XXX THESE MAY NEED TUNING
+	double minvalue = 10000;
+	
+	std::vector<double> integralvals(4);
+	for(int channeli=0; channeli<4; channeli++){
+		branches.at(channeli)->SetAddress(&integralvals.at(channeli));
+	}
+	
+	//std::vector<std::vector<double>> integrals(4);
+	for(int channel=0; channel<4; channel++){
+		
+		std::vector<std::vector<double>> &allchanneldata = alldata.at(channel);
+		int numreadouts = allchanneldata.size();
+		if(verbose) std::cout<<"we have "<<numreadouts<<" readouts for channel "<<channel<<std::endl;
+		
+		for(int readout=0; readout<std::min(maxreadouts,numreadouts); readout++){
+			
+			std::vector<double> data = allchanneldata.at(readout);
+			
+			//double maxvalue = (*(std::max_element(data.begin(),data.end())));
+			//double minvalue = (*(std::min_element(data.begin(),data.end())));
+			if(hwaveform==nullptr){ hwaveform = new TH1D("hwaveform","Sample Distribution",200,minvalue,maxvalue); }
+			else { hwaveform->Reset(); } // clear it's data
+			for(double sampleval : data) hwaveform->Fill(sampleval);
+			
+			hwaveform->Draw("goff");
+			hwaveform->Fit("gaus", "Q");
+			TF1* gausfit = hwaveform->GetFunction("gaus");
+			double gauscentre = gausfit->GetParameter(1); // 0 is amplitude, 1 is centre, 2 is width
+			if(verbose) std::cout<<"pedestal is "<<gauscentre<<std::endl;
+			
+			uint16_t peaksample = std::distance(data.begin(), std::min_element(data.begin(),data.end()));
+			double peakamplitude = data.at(peaksample);
+			if(verbose) std::cout<<"peak sample is at "<<peaksample<<std::endl;
+			
+			// from the peak sample, scan backwards for the start sample
+			int startmode = 2;
+			double thresholdfraction = 0.1;  // 20% of max
+			// 3 ways to do this:
+			// 0. scan away from peak until the first sample that changes direction
+			// 1. scan away from peak until the first sample that crosses pedestal
+			// 2. scan away from peak until we drop below a given fraction of the amplitude
+			uint16_t startsample = peaksample-1;
+			while(startsample>0){
+				if( ( (startmode==0) && (data.at(startsample) < data.at(startsample-1)) ) ||
+					( (startmode==1) && (data.at(startsample) < gauscentre) ) ||
+					( (startmode==2) && ((data.at(startsample)-gauscentre) < ((peakamplitude-gauscentre)*thresholdfraction)) ) ){
+					startsample--;
+				} else {
+					break;
+				}
+			}
+			if(verbose) std::cout<<"pulse starts at startsample "<<startsample<<std::endl;
+			
+			// from peak sample, scan forwards for the last sample
+			int endmode = 2;
+			uint16_t endsample = peaksample+1;
+			while(uint16_t(endsample+1)<data.size()){
+				if(((endmode==0) && (data.at(endsample+1) < data.at(endsample)) ) ||
+					 ((endmode==1) && (data.at(endsample)   < gauscentre) ) ||
+					 ((endmode==2) && ((data.at(endsample)-gauscentre) < ((peakamplitude-gauscentre)*thresholdfraction)))){
+					endsample++;
+				} else {
+					break;
+				}
+			}
+			if(verbose) std::cout<<"pulse ends at endsample "<<endsample<<std::endl;
+			
+			// calculate the integral
+			// we'll integrate over a little wider region than the strict cut, but not much
+			uint16_t paddingsamples=4;
+			int theintegral=0;
+			for(int samplei=std::max(0,startsample-paddingsamples);
+					samplei<std::min(int(data.size()),endsample+paddingsamples);
+					samplei++){
+				theintegral += data.at(samplei) - gauscentre;
+			}
+			if(verbose) std::cout<<"pulse integral = "<<theintegral<<std::endl;
+			
+			//integrals.at(channel).push_back(theintegral);
+			integralvals.at(channel) = theintegral;
+			branches.at(channel)->Fill();
+			
+		}// end loop over readouts for a given channel
+		
+	} // end loop over channels
+	
+	// cleanup
+	if(hwaveform) delete hwaveform;
+	return 1;
 }
