@@ -41,3 +41,6 @@ lib/Camac:
 	g++ $(CXXFLAGS) -shared -fPIC UserTools/camacinc/Jorway85A/Jorway85A.cpp -I include -L lib -o lib/libJ8.so
 #	g++ $(CXXFLAGS) -shared -fPIC UserTools/camacinc/CAENC117B/CAENC117B.cpp -I include -L lib -o lib/libC1.so
 	g++ $(CXXFLAGS) -shared -fPIC UserTools/camacinc/CAENC117B/my_Caen_C117B.cpp -I include -L lib -o lib/libC1.so
+
+wienertest: include/Camac lib/Camac
+	g++ $(CXXFLAGS) src/wiener_two_nim_test.cpp -o wienertest -I include -Llib -lCC -lm -lxx_usb -lpthread
