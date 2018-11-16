@@ -122,7 +122,7 @@ int RunDigitizer(CamacCrate* CC, KeyPressVars thekeypressvars, int numacquisitio
 
 // MEASUREMENT FUNCTIONS
 int DoCooldownTest(Module &List, TestVars testsettings, bool append);
-//int RunAfterpulseTest(CamacCrate* CC, Module &List, TestVars testsettings);
+int RunAfterpulseTest(CamacCrate* CC, Module &List, TestVars testsettings);
 int MeasureGain(Module &List, CamacCrate* CC, TestVars testsettings, KeyPressVars thekeypressvars, double testvoltage, std::vector<std::vector<double>> &gainvector);
 
 // CONSTANTS
@@ -309,7 +309,7 @@ int main(int argc, char* argv[]){
 	
 	// Do afterpulse test
 	// ==================
-	//int afterpulsetestok = RunAfterpulseTest(CC, List, testsettings, thekeypressvars);
+	int afterpulsetestok = RunAfterpulseTest(CC, List, testsettings, thekeypressvars);
 	
 	// Cleaup X11 stuff for sending keypresses
 	// =======================================
@@ -514,18 +514,183 @@ int MeasureGain(Module &List, CamacCrate* CC, TestVars testsettings, KeyPressVar
 // ***************************************************************************
 //                       AFTERPULSE TEST - Digitizer Ver
 // ***************************************************************************
-//int RunAfterpulseTest(CamacCrate* CC, Module &List, TestVars testsettings){
-//	
-//	// Set up Wiener CCUSB to fire NIM O2 on ActionRegWrite rather than NIM O1
-//	// (this is connected to a much brighter LED)
-//	int wienersetupok = SetupWienerNIMout(CC, false, true);
-//	
-//	// fire the LEDs and acquire data from the digitizer to "wave0.txt"
-//	int recorddataok = RunDigitizer(CC, thekeypressvars, testsettings.numafterpulseacquisitions);
-//	
-//	
-//	
-//}
+int RunAfterpulseTest(CamacCrate* CC, Module &List, TestVars testsettings, KeyPressVars thekeypressvars, std::vector<double> afterpulsevector){
+	
+	// Set up Wiener CCUSB to fire NIM O2 on ActionRegWrite rather than NIM O1
+	// (this is connected to a much brighter LED)
+	int wienersetupok = SetupWienerNIMout(CC, false, true);
+	
+	// fire the LEDs and acquire data from the digitizer to "wave0.txt"
+	int recorddataok = RunDigitizer(CC, thekeypressvars, testsettings.numafterpulseacquisitions);
+	
+	std::vector<std::vector<std::vector<double>>> alldata;  // readout, channel, datavalue
+	int loadok = LoadWavedumpFile(waveformfile, alldata);
+	
+	TH1D* hwaveform=nullptr;
+	bool verbose=true;
+	
+	int numreadouts = alldata.size();
+	if(verbose) std::cout<<"we have "<<numreadouts<<" readouts"<<std::endl;
+	for(int readout=0; readout<std::min(maxreadouts,numreadouts); readout++){
+		
+		std::vector<std::vector<double>> &allreadoutdata = alldata.at(readout);
+		for(int channel=0; channel<8; channel++){
+			
+			std::vector<double> data = allreadoutdata.at(channel);
+			
+			// skip processing if we have no channel data
+			if(data.size()==0){
+				// XXX set any tree variables needed for alignment here
+				continue;
+			}
+			
+			//////////////////////////////////////////////////
+			// Find DC offset
+			//////////////////////////////////////////////////
+			
+			// First plot the waveform as a histogram
+			// ======================================
+			double maxvalue = (*(std::max_element(data.begin(),data.end())));
+			double minvalue = (*(std::min_element(data.begin(),data.end())));
+			if(hwaveform==nullptr){ hwaveform = new TH1D("hwaveform","Sample Distribution",200,minvalue,maxvalue); }
+			else { hwaveform->Reset(); hwaveform->SetAxisRange(minvalue, maxvalue, "X"); } // clear it's data and reset axis range
+			for(double sampleval : data){ hwaveform->Fill(sampleval); }
+			
+			// short way: take tallest bin as DC offset - as a minimum, a good initial value for the fit
+			// ========================================
+			double gauscentre = hwaveform->GetXaxis()->GetBinCenter(hwaveform->GetMaximumBin());
+			
+			// long way: fit the offset with a gaussian
+			// ========================================
+			hwaveform->Draw("goff");
+			// first get some estimates for the gaussian fit, ROOT's not capable on it's own
+			double amplitude=hwaveform->GetBinContent(hwaveform->GetMaximumBin());
+			double width=50; // XXX may need tuning
+			if(verbose) std::cout<<"Max bin is "<<gauscentre<<", amplitude is "<<amplitude<<", stdev is "<<width<<std::endl;
+			TF1 agausfit("offsetfit","gaus",gauscentre-10*width,gauscentre+10*width);
+			TF1* gausfit = &agausfit;
+			gausfit->SetParameters(amplitude,gauscentre,width);
+			
+			hwaveform->Fit(gausfit, "RQ");  // use R to limit range! This is what makes it work!
+			gauscentre = gausfit->GetParameter(1); // 0 is amplitude, 1 is centre, 2 is width
+			if(verbose) std::cout<<"offset is "<<gauscentre<<std::endl;
+			
+			/////////////////////////////////////
+			// Now find the pulses
+			/////////////////////////////////////
+			// TODO FindPeaks
+			
+			/////////////////////////////////////
+			// Now for each pulse measure it's duration
+			/////////////////////////////////////
+			
+			for(pulses){
+				
+				uint16_t peaksample = std::distance(data.begin(), std::min_element(data.begin(),data.end()));
+				double peakamplitude = data.at(peaksample);
+				if(verbose) std::cout<<"peak sample is at "<<peaksample<<" with peak value "<<peakamplitude<<std::endl;
+				
+				// from the peak sample, scan backwards for the start sample
+				int startmode = 2;
+				double thresholdfraction = 0.1;  // 20% of max
+				if(verbose) std::cout<<"threshold value set to "<<((peakamplitude-gauscentre)*thresholdfraction)<<" ADC counts"<<std::endl;
+				// 3 ways to do this:
+				// 0. scan away from peak until the first sample that changes direction
+				// 1. scan away from peak until the first sample that crosses offset
+				// 2. scan away from peak until we drop below a given fraction of the amplitude
+				uint16_t startsample = std::max(int(0),static_cast<int>(peaksample-1));
+				if(verbose) std::cout<<"searching for pulse start: will require offset-subtracted data value is LESS than "
+														 <<((peakamplitude-gauscentre)*thresholdfraction)<<" to be within pulse."<<std::endl;
+				while(startsample>0){
+					if( ( (startmode==0) && (data.at(startsample) < data.at(startsample-1)) ) ||
+							( (startmode==1) && (data.at(startsample) < gauscentre) ) ||
+							( (startmode==2) && ((data.at(startsample)-gauscentre) < ((peakamplitude-gauscentre)*thresholdfraction)) ) ){
+						startsample--;
+					} else {
+						break;
+					}
+				}
+				if(verbose) std::cout<<"pulse starts at startsample "<<startsample<<std::endl;
+				
+				// from peak sample, scan forwards for the last sample
+				int endmode = 2;
+				uint16_t endsample = std::min(static_cast<int>(data.size()-1),static_cast<int>(peaksample+1));
+				while(uint16_t(endsample+1)<data.size()){
+					if(((endmode==0) && (data.at(endsample+1) < data.at(endsample)) ) ||
+						 ((endmode==1) && (data.at(endsample)   < gauscentre) ) ||
+						 ((endmode==2) && ((data.at(endsample)-gauscentre) < ((peakamplitude-gauscentre)*thresholdfraction)))){
+						endsample++;
+					} else {
+						break;
+					}
+				}
+				if(verbose) std::cout<<"pulse ends at endsample "<<endsample<<std::endl;
+				
+			}
+			
+			/////////////////////////////////
+			// If only one pulse, check if the pulse seems too long - might be afterpulsing
+			/////////////////////////////////
+			// TODO
+			
+			/////////////////////////////////
+			// Else if >1 pulse, measure charge in first pulse relative to charge in others
+			// Start by calculating pulse integrals
+			/////////////////////////////////
+			
+			for(pulse){
+				// we'll integrate over a little wider region than the strict cut, but not much
+				uint16_t paddingsamples=4;
+				double theintegral=0;
+				for(int samplei=std::max(0,int(startsample-paddingsamples));
+						samplei<std::min(int(data.size()),int(endsample+paddingsamples));
+						samplei++){
+					theintegral += data.at(samplei) - gauscentre;
+				}
+				if(verbose) std::cout<<"pulse integral = "<<theintegral<<std::endl;
+				
+				// convert to absolute gain
+				double integrated_volt_samples = -theintegral / (DT5730_ADC_TO_VOLTS*PREAMPLIFIER);
+				double ELECTRONS_PER_SECOND = (DT5730_SAMPLE_PERIOD/ELECTRON_CHARGE);
+				double thecharge = integrated_volt_samples*ELECTRONS_PER_SECOND/DT5730_INPUT_IMPEDANCE;
+				
+				// Afterpulse measurement! while we have the waveform data, and now that we have the DC offset,
+				// scan the waveform and count the number of pulses. Any > 1 are considered afterpulses.
+				int APinsamples = testsettings.afterpulseminsamplesabovethreshold;
+				int APoutsamples = testsettings.afterpulseminholdoffsamples;
+				double APthreshold = testsettings.afterpulsethresholdfraction;
+				for(auto aval : data){
+					double offsetsubtractedval = aval - gauscentre;
+					if(inpulse){
+						if(offsetsubtractedval > (APthreshold*peakamplitude
+					}
+				}
+			}
+			
+			/////////////////////////////////
+			// Make the ratio
+			/////////////////////////////////
+			double APcharge=0;
+			for(int pulsei=1; pulsei<npulses; pulsei++){
+				APcharge += pulseintegrals.at(pulsei);
+			}
+			double chargeratio = pulseintegrals.at(0) / APcharge;
+			
+			allAPratios.at(channel).push_back(chargeratio);
+		} // loop over channels
+	} loop over readouts
+	
+	// we should average the AP ratios for each channel here
+	for(int channeli=0; channeli<8; channeli++){
+		std::vector<double> theAPratios = allAPratios.at(channel);
+		double totAPs=0;
+		for(double aAPratio : theAPratios) totAPs+= aAPratio;
+		totAPs /= theAPratios.size();
+		averageAPratios.at(channel) = totAPs;
+	}
+	
+	return 1;
+}
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -1734,17 +1899,17 @@ int MeasureIntegralsFromWavedump(std::string waveformfile, std::vector<TBranch*>
 			double ELECTRONS_PER_SECOND = (DT5730_SAMPLE_PERIOD/ELECTRON_CHARGE);
 			double thecharge = integrated_volt_samples*ELECTRONS_PER_SECOND/DT5730_INPUT_IMPEDANCE;
 			
-//			// Afterpulse measurement! while we have the waveform data, and now that we have the DC offset,
-//			// scan the waveform and count the number of pulses. Any > 1 are considered afterpulses.
-//			int APinsamples = testsettings.afterpulseminsamplesabovethreshold;
-//			int APoutsamples = testsettings.afterpulseminholdoffsamples;
-//			double APthreshold = testsettings.afterpulsethresholdfraction;
-//			for(auto aval : data){
-//				double offsetsubtractedval = aval - gauscentre;
-//				if(inpulse){
-//					if(offsetsubtractedval > (APthreshold*peakamplitude
-//				}
-//			}
+			// Afterpulse measurement! while we have the waveform data, and now that we have the DC offset,
+			// scan the waveform and count the number of pulses. Any > 1 are considered afterpulses.
+			int APinsamples = testsettings.afterpulseminsamplesabovethreshold;
+			int APoutsamples = testsettings.afterpulseminholdoffsamples;
+			double APthreshold = testsettings.afterpulsethresholdfraction;
+			for(auto aval : data){
+				double offsetsubtractedval = aval - gauscentre;
+				if(inpulse){
+					if(offsetsubtractedval > (APthreshold*peakamplitude
+				}
+			}
 			
 #if defined DRAW_WAVEFORMS || defined DRAW_BAD_WAVEFORMS
 			if(abs(thecharge)>40e6){   // if(abs(theintegral)>200e3)
