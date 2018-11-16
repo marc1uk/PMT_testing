@@ -8,7 +8,7 @@
 
 int main(){
 
-      PMTTestingHVcontrol *hv1 = new PMTTestingHVcontrol();
+      PMTTestingHVcontrol *hv1 = new PMTTestingHVcontrol("192.168.120.9",5555);
 
       hv1->SetRun(3,1);
 

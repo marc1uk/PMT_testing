@@ -11,7 +11,7 @@ class PMTTestingHVcontrol{
 
  public:
 
-  PMTTestingHVcontrol();
+  PMTTestingHVcontrol(std::string HVIPin, int HVPortin);
 
   bool SetRun(int run_number, int subrun_number);
   bool SetVoltage(int voltage);

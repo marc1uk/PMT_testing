@@ -34,8 +34,8 @@ void CamacCrate::Init(int i)		//Initialize device
 void CamacCrate::USBFind()		//Find usb devices
 {
 	ndev = xxusb_devices_find(devices);
-	for (int i = 0; i < ndev; i++)
-		std::cout << i << " device is " << devices[i].SerialString << std::endl;
+	//for (int i = 0; i < ndev; i++)
+	//	std::cout << i << " device is " << devices[i].SerialString << std::endl;
 }
 
 void CamacCrate::USBOpen(int i)		//Open i device and create handler
@@ -46,7 +46,7 @@ void CamacCrate::USBOpen(int i)		//Open i device and create handler
 	else 
 	{
 		CamacCrate::IsOpen = true;
-		std::cout << "\n\nCC-USB opened. \n" << std::endl;
+		//std::cout << "\n\nCC-USB opened. \n" << std::endl;
 	}
 }
 
@@ -54,7 +54,7 @@ void CamacCrate::USBClose()		//Close USB devices
 {
 	int ret = xxusb_device_close(Mudev);
 	if (ret < 0) std::cerr << "\n\nFailed to close CC-USB. \n" << std::endl;
-	else std::cout << "\n\nCC-USB closed. \n" << std::endl;
+	//else std::cout << "\n\nCC-USB closed. \n" << std::endl;
 }
 
 int CamacCrate::SetLAMmask(std::string &Mask)

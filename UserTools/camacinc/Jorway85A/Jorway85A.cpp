@@ -17,13 +17,13 @@ Jorway85A::Jorway85A(int NSlot, std::string config, int i) : CamacCrate(i)	//Sub
 
 int Jorway85A::ReadScaler(int scalernum) //Read Scaler scalernum.
 {
-	std::cout<<"reading scalar "<<scalernum;
 	if(scalernum>3||scalernum<0) return -1;
 	int Data = 0;
 	int Q = 0, X = 0;
 
+	//std::cout<<"reading scalar channel "<<scalernum;
 	int ret = READ(0, scalernum, Data, Q, X);
-	//std::cout<< ", return val = "<< ret<<", Data = "<<Data<<std::endl;
+	//std::cout<< ", return val = "<< ret<<", Q="<<Q<<", X="<<X<<", Data = "<<Data<<std::endl;
 	if (ret < 0){
 		return ret;
 	} else {

@@ -99,7 +99,7 @@ int Lecroy4300b::ClearLAM()		//Test and clear LAM, if present.
 
 int Lecroy4300b::WriteReg(int &Data)	//Write status word register. Q = 1 if BUSY = 0.
 {
-	std::cout<<"writing register "<<Data<<std::endl;
+	//std::cout<<"writing register "<<Data<<std::endl;
 	int Q = 0, X = 0;
 	int ret = WRITE(0, 16, Data, Q, X);
 	if (ret < 0) return ret;
@@ -211,8 +211,8 @@ void Lecroy4300b::EncRegister()
 	Control = Control << 8;
 	Control += VSN;
 
-	std::cout << "Register is (hex)" << std::hex << Control;
-	std::cout << std::dec << std::endl;
+	//std::cout << "Register is (hex)" << std::hex << Control;
+	//std::cout << std::dec << std::endl;
 }
 
 void Lecroy4300b::GetRegister()

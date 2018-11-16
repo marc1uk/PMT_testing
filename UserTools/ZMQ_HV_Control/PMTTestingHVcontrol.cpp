@@ -2,14 +2,11 @@
 
 //adapted from HVComs.cpp ToolAnalysis file
 
-PMTTestingHVcontrol::PMTTestingHVcontrol(){
+PMTTestingHVcontrol::PMTTestingHVcontrol(std::string HVIPin="192.168.163.61", int HVPortin=5555) : HVIP(HVIPin), HVPort(HVPortin){
 
 }
 
 bool PMTTestingHVcontrol::SetRun(int run_number, int subrun_number){
-
-  HVIP="192.168.163.61";    //to be changed??
-  HVPort=5555;              //to be changed??
 
   zmq::context_t* Context = new zmq::context_t(1); //???, apparently it should be ok...
   zmq::socket_t HV(*Context, ZMQ_DEALER);
@@ -141,9 +138,6 @@ bool PMTTestingHVcontrol::SetRun(int run_number, int subrun_number){
 
 bool PMTTestingHVcontrol::SetVoltage(int voltage){
 
-  HVIP="192.168.163.61";    //to be changed??
-  HVPort=5555;                      //to be changed??
-
   zmq::context_t* Context = new zmq::context_t(1); //???, apparently it should be ok...
   zmq::socket_t HV(*Context, ZMQ_DEALER);
 
@@ -267,9 +261,6 @@ bool PMTTestingHVcontrol::SetVoltage(int voltage){
 bool PMTTestingHVcontrol::GetEvent(){
   //original finalizing part
   
-
-  HVIP="192.168.163.61";    //to be changed??
-  HVPort=5555;                      //to be changed??
 
   zmq::context_t* Context = new zmq::context_t(1); //???, apparently it should be ok...
   zmq::socket_t HV(*Context, ZMQ_DEALER);
