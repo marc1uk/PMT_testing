@@ -229,7 +229,7 @@ int main(int argc, char* argv[]){
 	// reset the branch addresses before any subsequent Draw() calls, they will soon to invalid vectors
 	if(hwaveform){ delete hwaveform; hwaveform=nullptr; }
 	if(waveform){ delete waveform; waveform=nullptr; }
-	if(c2){ delete c2; c2=nullptr; }
+	if(gROOT->FindObject("c2")!=nullptr){ delete c2; c2=nullptr; }
 	return 1;
 }
 

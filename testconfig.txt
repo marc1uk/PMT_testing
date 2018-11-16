@@ -2,9 +2,9 @@
 # Setup what PMT tests should be run and their settings
 #
 CooldownFileNameBase        cooldown   # suffix will be appended in program. if "NA", test not performed.
-CooldownTotalMins           20         # 20 minutes total test duration
-CooldownCountSecs           60         # rates will be measured over 60s
-CooldownLoopSecs            60         # rates will be measured every 60 - i.e., no wait between measurements
+CooldownTotalMins           2         # 20 minutes total test duration
+CooldownCountSecs           20         # rates will be measured over 60s
+CooldownLoopSecs            30         # rates will be measured every 60 - i.e., no wait between measurements
 CooldownVoltage             1500       # 1500 V? suitable?
 Threshold                   15         # discriminator threshold in mV. 15 mV miminum, 1V maximum
 ThresholdMode               0          # 0 = use programmed threshold, 1 = use FP potentiometer
@@ -23,14 +23,14 @@ AfterpulseDisplayTime       2000       # milliseconds to show the waveform for a
 #
 #                                 # list of PMT IDs. QDC / discriminator.
 #StartPmtNames                    # ordered as QDC / discriminator channels 0, 1, 2...
-W2
-W5
-E2
+#W2
+#W5
+#E2
 Potato
 #EndPmtNames
 #
 #StartGainVoltages                # list of HVs at which to measure gain.
 1500
-1700
-2000
+#1700
+#2000
 #EndGainVoltages

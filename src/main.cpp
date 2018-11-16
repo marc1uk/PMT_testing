@@ -404,7 +404,7 @@ int DoCooldownTest(Module &List, TestVars testsettings, bool append)
 	// ***************************************
 	
 	std::vector<double> readouttimes;
-	std::vector<std::vector<double>> allrates; // outer channel, inner readout
+	std::vector<std::vector<double>> allrates(8); // outer channel, inner readout
 	for(int i=0; i<nummeasurements; i++){
 		// ***************************************
 		// COOLDOWN MEASUREMENT
@@ -440,15 +440,17 @@ int DoCooldownTest(Module &List, TestVars testsettings, bool append)
 			usleep(sleeptimeinmicroseconds);
 		}
 		
-		readouttimes.push_back(waitmins);
+		readouttimes.push_back(waitmins*i);
 	}
 	
 	// make and save a TGraph plotting the change in rates
+	TCanvas cooldowncanv;
+	cooldowncanv.cd();
 	for(int channeli=0; channeli<testsettings.pmtNames.size(); channeli++){
 		std::string pmtName = testsettings.pmtNames.at(channeli);
 		TGraph cooldowngraph(readouttimes.size(),readouttimes.data(), allrates.at(channeli).data());
 		TString titles = TString::Format("Cooldown %s;Time In Dark (mins);Dark Rate (Hz)",pmtName.c_str());
-		cooldowngraph.SetTitle();
+		cooldowngraph.SetTitle(titles);
 		std::string outputfilenamebase = testsettings.outdir + "/Cooldown_" + pmtName;
 		std::string cfilename =  outputfilenamebase + ".C";
 		cooldowngraph.SaveAs(cfilename.c_str());
@@ -460,6 +462,9 @@ int DoCooldownTest(Module &List, TestVars testsettings, bool append)
 			}
 		}
 	}
+	cooldowncanv.Clear();
+	// Canvas *must* close when done to return focus to the terminal window.
+	// This ensures our keystrokes are properly sent to wavedump in subsequent tests
 	
 	// ***************************************
 	// COOLDOWN CLEANUP
@@ -553,11 +558,10 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	int recorddataok = RunDigitizer(CC, thekeypressvars, testsettings.numafterpulseacquisitions,
 																	 testsettings.afterpulsedisplaytime, true);
 	
-	return 1; // remainder is probably not needed
 	// FIXME we should pass branches and save to ROOT file, and save distributions of APratio
 	
 	std::vector<std::vector<std::vector<double>>> alldata;  // readout, channel, datavalue
-	int loadok = LoadWavedumpFile("wave0.txt", alldata);
+	int loadok = LoadWavedumpFile("wave0.txt WaveDumpConfig_Afterpulse.txt", alldata);
 	
 	TH1D* hwaveform=nullptr;
 	bool verbose=true;
@@ -1252,7 +1256,7 @@ int ReadRates(Module &List, double countsecs, std::ofstream &data, std::vector<s
 	std::vector<std::vector<int>> allscalervals;
 	//Read the scalars
 	for(int scaleri=0; scaleri<List.CC.at("SCA").size(); scaleri++){
-		std::cout<<"reading out scaler "<<scaleri<<std::endl;
+		//std::cout<<"reading out scaler "<<scaleri<<std::endl;
 		std::vector<int> scalervals(4);
 		int ret = List.CC["SCA"].at(scaleri)->ReadAll(scalervals.data());
 		allscalervals.push_back(scalervals);
@@ -1262,7 +1266,7 @@ int ReadRates(Module &List, double countsecs, std::ofstream &data, std::vector<s
 	}
 	
 	// get and write timestamp to file
-	std::cout<<"writing to file"<<std::endl;
+	//std::cout<<"writing to file"<<std::endl;
 	std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
 	time_t tt;
 	tt = std::chrono::system_clock::to_time_t ( time );
@@ -1282,13 +1286,13 @@ int ReadRates(Module &List, double countsecs, std::ofstream &data, std::vector<s
 		for(int chan=0; chan<4; chan++){
 			double darkRate = double (allscalervals.at(scalercard).at(chan)) / countsecs;
 			data << darkRate;
-			allrates.at((scalercard*4)+chan).push_back(darkRate);
 			if(((scalercard+1)!=(allscalervals.size())) || chan<3) data << ", ";
+			allrates.at((scalercard*4)+chan).push_back(darkRate);
 		}
 	}
 	
 	data << std::endl;
-	std::cout << "Done writing to file" << std::endl;
+	//std::cout << "Done writing to file" << std::endl;
 	
 	return 1;// todo error checking
 }
