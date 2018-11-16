@@ -3,11 +3,11 @@ CXXFLAGS    = -g -std=c++0x -Wall -Wno-reorder -Wno-sign-compare -Wno-unused-var
 CPPFLAGS = `root-config --cflags`
 LDFLAGS = `root-config --libs`
 
-ZMQInclude = -I../zeromq-4.0.7-master/include
-ZMQLib = -L../zeromq-4.0.7-master/lib -lzmq
+#ZMQInclude = -I../zeromq-4.0.7-master/include
+#ZMQLib = -L../zeromq-4.0.7-master/lib -lzmq
 
-#ZMQInclude = -I/home/marc/LinuxSystemFiles/ToolAnalysis/ToolAnalysis/ToolDAQ/zeromq-4.0.7/include
-#ZMQLib = -L/home/marc/LinuxSystemFiles/ToolAnalysis/ToolAnalysis/ToolDAQ/zeromq-4.0.7/lib -lzmq
+ZMQInclude = -I/home/marc/LinuxSystemFiles/ToolAnalysis/ToolAnalysis/ToolDAQ/zeromq-4.0.7/include
+ZMQLib = -L/home/marc/LinuxSystemFiles/ToolAnalysis/ToolAnalysis/ToolDAQ/zeromq-4.0.7/lib -lzmq
 
 all: main
 
@@ -44,3 +44,6 @@ lib/Camac:
 
 wienertest: include/Camac lib/Camac
 	g++ $(CXXFLAGS) src/wiener_two_nim_test.cpp -o wienertest -I include -Llib -lCC -lm -lxx_usb -lpthread
+
+plotwaveforms:
+	g++ $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) src/plot_wavedump.cpp -o plot_wavedump -I include -Llib -lpthread

@@ -38,6 +38,7 @@
 #include "TROOT.h"
 #include "TApplication.h"
 #include "TSystem.h"
+#include "TPolyMarker.h"
 
 //#define DRAWPHD 1
 //#define DRAW_BAD_WAVEFORMS 1
@@ -84,6 +85,11 @@ struct TestVars{        // For loading test settings from config file
 	int gainliveplotfreq=500;
 	int gainprintfreq=500;
 	
+	int numafterpulseacquisitions = 50;
+	int afterpulsedisplaytime=2000;
+	double afterpulsethreshold=20;
+	double afterpulseminwidth=2;
+	
 	std::string outdir=""; // set in program, not read from file
 };
 
@@ -104,7 +110,7 @@ int ConstructCards(Module &List, std::vector<std::string> &Lcard, std::vector<st
 int DoCaenTests(Module &List);
 int SetupWeinerSoftTrigger(CamacCrate* CC);
 int SetupWienerNIMout(CamacCrate* CC, bool EnableNimOut1, bool EnableNimOut2);
-int ReadRates(Module &List, double countsecs, std::ofstream &data);
+int ReadRates(Module &List, double countsecs, std::ofstream &data, std::vector<std::vector<double>> &allrates);
 int IntializeADCs(Module &List, std::vector<std::string> &Lcard, std::vector<std::string> &Ccard, bool defaultinit);
 int WaitForAdcData(Module &List);
 int ReadAdcVals(Module &List, std::map<int, int> &ADCvals);
@@ -118,12 +124,12 @@ int LoadWavedumpFile(std::string filepath, std::vector<std::vector<std::vector<d
 int MeasureIntegralsFromWavedump(std::string waveformfile, std::vector<TBranch*> branches);
 int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>> &gainvector);
 int RunQDC(Module &List, CamacCrate* CC, TestVars testsettings, std::string outputfilename);
-int RunDigitizer(CamacCrate* CC, KeyPressVars thekeypressvars, int numacquisitions);
+int RunDigitizer(CamacCrate* CC, KeyPressVars thekeypressvars, int numacquisitions, int ms_delay, bool plot);
 
 // MEASUREMENT FUNCTIONS
 int DoCooldownTest(Module &List, TestVars testsettings, bool append);
-int RunAfterpulseTest(CamacCrate* CC, Module &List, TestVars testsettings);
 int MeasureGain(Module &List, CamacCrate* CC, TestVars testsettings, KeyPressVars thekeypressvars, double testvoltage, std::vector<std::vector<double>> &gainvector);
+int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekeypressvars);
 
 // CONSTANTS
 const unsigned int masks[] = {0x01, 0x02, 0x04, 0x08, 
@@ -309,7 +315,7 @@ int main(int argc, char* argv[]){
 	
 	// Do afterpulse test
 	// ==================
-	int afterpulsetestok = RunAfterpulseTest(CC, List, testsettings, thekeypressvars);
+	int afterpulsetestok = RunAfterpulseTest(CC, testsettings, thekeypressvars);
 	
 	// Cleaup X11 stuff for sending keypresses
 	// =======================================
@@ -396,7 +402,9 @@ int DoCooldownTest(Module &List, TestVars testsettings, bool append)
 	//std::vector<int> thresholds{30,40,50,60,70,80,90,100,200,300,400};
 	//nummeasurements=thresholds.size();
 	// ***************************************
-
+	
+	std::vector<double> readouttimes;
+	std::vector<std::vector<double>> allrates; // outer channel, inner readout
 	for(int i=0; i<nummeasurements; i++){
 		// ***************************************
 		// COOLDOWN MEASUREMENT
@@ -411,7 +419,7 @@ int DoCooldownTest(Module &List, TestVars testsettings, bool append)
 		
 		// Read rates and write to file
 		// ----------------------------
-		int readscalerok = ReadRates(List, countsecs, data);
+		int readscalerok = ReadRates(List, countsecs, data, allrates);
 		
 		// ***************************************
 		// COOLDOWN MEASUREMENT DELAY
@@ -430,6 +438,26 @@ int DoCooldownTest(Module &List, TestVars testsettings, bool append)
 		} else {
 			double sleeptimeinmicroseconds = waitmins*60.*1000000.;
 			usleep(sleeptimeinmicroseconds);
+		}
+		
+		readouttimes.push_back(waitmins);
+	}
+	
+	// make and save a TGraph plotting the change in rates
+	for(int channeli=0; channeli<testsettings.pmtNames.size(); channeli++){
+		std::string pmtName = testsettings.pmtNames.at(channeli);
+		TGraph cooldowngraph(readouttimes.size(),readouttimes.data(), allrates.at(channeli).data());
+		TString titles = TString::Format("Cooldown %s;Time In Dark (mins);Dark Rate (Hz)",pmtName.c_str());
+		cooldowngraph.SetTitle();
+		std::string outputfilenamebase = testsettings.outdir + "/Cooldown_" + pmtName;
+		std::string cfilename =  outputfilenamebase + ".C";
+		cooldowngraph.SaveAs(cfilename.c_str());
+		cooldowngraph.Draw();
+		if(gPad){
+			if(gPad->GetCanvas()){
+				std::string pngfilename = outputfilenamebase + ".png";
+				gPad->GetCanvas()->SaveAs(pngfilename.c_str());
+			}
 		}
 	}
 	
@@ -457,7 +485,8 @@ int MeasureGain(Module &List, CamacCrate* CC, TestVars testsettings, KeyPressVar
 	
 	// alternative version using the UCDavis digitizer
 	// this also fires the LED a given number of times, reads the waveforms and writes them to file
-	int rundigitizerok = RunDigitizer(CC, thekeypressvars, testsettings.gainacquisitions); // XXX disable for debug
+	int ms_delay=1; // time between LED flashes
+	int rundigitizerok = RunDigitizer(CC, thekeypressvars, testsettings.gainacquisitions, ms_delay, false);
 	
 	// Create a ROOT file to save the pulse height distribution data
 	if(verbosity) std::cout<<"Creating output ROOT file "<<gainfilename<<std::endl;
@@ -514,24 +543,29 @@ int MeasureGain(Module &List, CamacCrate* CC, TestVars testsettings, KeyPressVar
 // ***************************************************************************
 //                       AFTERPULSE TEST - Digitizer Ver
 // ***************************************************************************
-int RunAfterpulseTest(CamacCrate* CC, Module &List, TestVars testsettings, KeyPressVars thekeypressvars, std::vector<double> afterpulsevector){
+int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekeypressvars){
 	
 	// Set up Wiener CCUSB to fire NIM O2 on ActionRegWrite rather than NIM O1
 	// (this is connected to a much brighter LED)
 	int wienersetupok = SetupWienerNIMout(CC, false, true);
 	
 	// fire the LEDs and acquire data from the digitizer to "wave0.txt"
-	int recorddataok = RunDigitizer(CC, thekeypressvars, testsettings.numafterpulseacquisitions);
+	int recorddataok = RunDigitizer(CC, thekeypressvars, testsettings.numafterpulseacquisitions,
+																	 testsettings.afterpulsedisplaytime, true);
+	
+	return 1; // remainder is probably not needed
+	// FIXME we should pass branches and save to ROOT file, and save distributions of APratio
 	
 	std::vector<std::vector<std::vector<double>>> alldata;  // readout, channel, datavalue
-	int loadok = LoadWavedumpFile(waveformfile, alldata);
+	int loadok = LoadWavedumpFile("wave0.txt", alldata);
 	
 	TH1D* hwaveform=nullptr;
 	bool verbose=true;
 	
 	int numreadouts = alldata.size();
 	if(verbose) std::cout<<"we have "<<numreadouts<<" readouts"<<std::endl;
-	for(int readout=0; readout<std::min(maxreadouts,numreadouts); readout++){
+	std::vector<std::vector<double>> allAPratios(8);
+	for(int readout=0; readout<numreadouts; readout++){
 		
 		std::vector<std::vector<double>> &allreadoutdata = alldata.at(readout);
 		for(int channel=0; channel<8; channel++){
@@ -541,6 +575,7 @@ int RunAfterpulseTest(CamacCrate* CC, Module &List, TestVars testsettings, KeyPr
 			// skip processing if we have no channel data
 			if(data.size()==0){
 				// XXX set any tree variables needed for alignment here
+				allAPratios.at(channel).push_back(0);
 				continue;
 			}
 			
@@ -578,21 +613,36 @@ int RunAfterpulseTest(CamacCrate* CC, Module &List, TestVars testsettings, KeyPr
 			/////////////////////////////////////
 			// Now find the pulses
 			/////////////////////////////////////
-			// TODO FindPeaks
+			double minwidth=2;
+			// peak finder finds peaks based on a fraction of the peak
+			// but we might not really want this, an absolute threshold is probably better
+			// (especially as we may not have *any* pulses) so scale it out
+			double finderthresholdfraction = testsettings.afterpulsethreshold/amplitude;
+			hwaveform->ShowPeaks(testsettings.afterpulseminwidth,"goff",finderthresholdfraction);
+			TPolyMarker* thepeakmarkers = (TPolyMarker*)hwaveform->FindObject("TPolyMarker");
+			int numpeaksfound=0;
+			if(thepeakmarkers) numpeaksfound = thepeakmarkers->GetN();
+			if(numpeaksfound==0){
+				// XXX set any tree variables needed for alignment here
+				allAPratios.at(channel).push_back(0);  // 0% afterpulsing if no pulse
+				continue;   // in the event of 1 pulse, check if it's absurdly long
+			}
+			std::vector<double> peakpositions(thepeakmarkers->GetX(),thepeakmarkers->GetX()+numpeaksfound);
+			std::vector<double> peakamplitudes(thepeakmarkers->GetY(),thepeakmarkers->GetY()+numpeaksfound);
 			
 			/////////////////////////////////////
-			// Now for each pulse measure it's duration
+			// measure the pulse charges
 			/////////////////////////////////////
-			
-			for(pulses){
+			std::vector<double> peakintegrals;
+			for(int pulsei=0; pulsei<numpeaksfound; pulsei++){
 				
-				uint16_t peaksample = std::distance(data.begin(), std::min_element(data.begin(),data.end()));
-				double peakamplitude = data.at(peaksample);
+				uint16_t peaksample = hwaveform->FindBin(peakpositions.at(pulsei));
+				double peakamplitude = peakamplitudes.at(pulsei);
 				if(verbose) std::cout<<"peak sample is at "<<peaksample<<" with peak value "<<peakamplitude<<std::endl;
 				
 				// from the peak sample, scan backwards for the start sample
 				int startmode = 2;
-				double thresholdfraction = 0.1;  // 20% of max
+				double thresholdfraction = 0.1;  // 10% of max
 				if(verbose) std::cout<<"threshold value set to "<<((peakamplitude-gauscentre)*thresholdfraction)<<" ADC counts"<<std::endl;
 				// 3 ways to do this:
 				// 0. scan away from peak until the first sample that changes direction
@@ -626,19 +676,12 @@ int RunAfterpulseTest(CamacCrate* CC, Module &List, TestVars testsettings, KeyPr
 				}
 				if(verbose) std::cout<<"pulse ends at endsample "<<endsample<<std::endl;
 				
-			}
-			
-			/////////////////////////////////
-			// If only one pulse, check if the pulse seems too long - might be afterpulsing
-			/////////////////////////////////
-			// TODO
-			
-			/////////////////////////////////
-			// Else if >1 pulse, measure charge in first pulse relative to charge in others
-			// Start by calculating pulse integrals
-			/////////////////////////////////
-			
-			for(pulse){
+				// handle the case of just one, but very extended pulse
+				// FIXME to finish
+//				if(numpeaksfound==1){
+//					if((endsample-startsample)>
+//				}
+				
 				// we'll integrate over a little wider region than the strict cut, but not much
 				uint16_t paddingsamples=4;
 				double theintegral=0;
@@ -648,45 +691,32 @@ int RunAfterpulseTest(CamacCrate* CC, Module &List, TestVars testsettings, KeyPr
 					theintegral += data.at(samplei) - gauscentre;
 				}
 				if(verbose) std::cout<<"pulse integral = "<<theintegral<<std::endl;
+				peakintegrals.push_back(theintegral);
 				
-				// convert to absolute gain
-				double integrated_volt_samples = -theintegral / (DT5730_ADC_TO_VOLTS*PREAMPLIFIER);
-				double ELECTRONS_PER_SECOND = (DT5730_SAMPLE_PERIOD/ELECTRON_CHARGE);
-				double thecharge = integrated_volt_samples*ELECTRONS_PER_SECOND/DT5730_INPUT_IMPEDANCE;
-				
-				// Afterpulse measurement! while we have the waveform data, and now that we have the DC offset,
-				// scan the waveform and count the number of pulses. Any > 1 are considered afterpulses.
-				int APinsamples = testsettings.afterpulseminsamplesabovethreshold;
-				int APoutsamples = testsettings.afterpulseminholdoffsamples;
-				double APthreshold = testsettings.afterpulsethresholdfraction;
-				for(auto aval : data){
-					double offsetsubtractedval = aval - gauscentre;
-					if(inpulse){
-						if(offsetsubtractedval > (APthreshold*peakamplitude
-					}
-				}
 			}
 			
 			/////////////////////////////////
-			// Make the ratio
+			// Calculate the ratio of charge in first peak to total charge
 			/////////////////////////////////
-			double APcharge=0;
-			for(int pulsei=1; pulsei<npulses; pulsei++){
-				APcharge += pulseintegrals.at(pulsei);
+			double totalintegral=0;
+			for(int pulsei=0; pulsei<numpeaksfound; pulsei++){
+				totalintegral += peakintegrals.at(pulsei);
 			}
-			double chargeratio = pulseintegrals.at(0) / APcharge;
-			
+			double largestpulse = (*(std::max_element(peakintegrals.begin(), peakintegrals.end())));
+			double chargeratio = (largestpulse / totalintegral) - 1.;
 			allAPratios.at(channel).push_back(chargeratio);
+			
 		} // loop over channels
-	} loop over readouts
+	} // loop over readouts
 	
-	// we should average the AP ratios for each channel here
+	std::vector<double> averageAPratios(8);
+	// average the AP ratios for each channel here
 	for(int channeli=0; channeli<8; channeli++){
-		std::vector<double> theAPratios = allAPratios.at(channel);
+		std::vector<double> theAPratios = allAPratios.at(channeli);
 		double totAPs=0;
 		for(double aAPratio : theAPratios) totAPs+= aAPratio;
 		totAPs /= theAPratios.size();
-		averageAPratios.at(channel) = totAPs;
+		averageAPratios.at(channeli) = totAPs;
 	}
 	
 	return 1;
@@ -704,7 +734,7 @@ int RunAfterpulseTest(CamacCrate* CC, Module &List, TestVars testsettings, KeyPr
 //                           RUN CAEN DT5730B DIGITIZER
 // ***************************************************************************
 
-int RunDigitizer(CamacCrate* CC, KeyPressVars thekeypressvars, int numacquisitions){
+int RunDigitizer(CamacCrate* CC, KeyPressVars thekeypressvars, int numacquisitions, int ms_delay, bool plot){
 	
 	// Run wavedump in an external thread so it can execute while we continue and send keys to it
 	// first create a promise we can use to hold until the external thread is done
@@ -731,6 +761,12 @@ int RunDigitizer(CamacCrate* CC, KeyPressVars thekeypressvars, int numacquisitio
 	DoKeyPress(KEYCODE, thekeypressvars);
 	std::this_thread::sleep_for(std::chrono::milliseconds(500));
 	
+	// enable plotting if requested
+	std::cout<<"enabling continuous plotting"<<std::endl;
+	KEYCODE = XK_p; // USE LOWER CASE, BUT WITH BOOL 'CAPS' MODIFIER PARAMETER!
+	DoKeyPress(KEYCODE, thekeypressvars, true);
+	std::this_thread::sleep_for(std::chrono::seconds(1));
+	
 	// we need to fire the LED (which will also trigger acquisition)
 	// Get register settings with soft-trigger bit (un)set
 	// ===================================================
@@ -745,7 +781,7 @@ int RunDigitizer(CamacCrate* CC, KeyPressVars thekeypressvars, int numacquisitio
 		int command_ok = CC->ActionRegWrite(RegActivated);
 		//std::cout<<"Firing LED " << ((command_ok) ? "OK" : "FAILED") << std::endl;
 		// DT5730B acquires 1024 samples with 500MHz rate = 2us per readout
-		usleep(1000);
+		std::this_thread::sleep_for(std::chrono::milliseconds(ms_delay));
 	}
 	
 	// stop it
@@ -1194,7 +1230,7 @@ int SetupWienerNIMout(CamacCrate* CC, bool EnableNimOut1, bool EnableNimOut2){
 // ***************************************************************************
 // MEASURE PULSE RATE WITH SCALER
 // ***************************************************************************
-int ReadRates(Module &List, double countsecs, std::ofstream &data){
+int ReadRates(Module &List, double countsecs, std::ofstream &data, std::vector<std::vector<double>> &allrates){
 	
 	// clear counters
 	//std::cout<<"clearing scalers"<<std::endl;
@@ -1246,6 +1282,7 @@ int ReadRates(Module &List, double countsecs, std::ofstream &data){
 		for(int chan=0; chan<4; chan++){
 			double darkRate = double (allscalervals.at(scalercard).at(chan)) / countsecs;
 			data << darkRate;
+			allrates.at((scalercard*4)+chan).push_back(darkRate);
 			if(((scalercard+1)!=(allscalervals.size())) || chan<3) data << ", ";
 		}
 	}
@@ -1448,7 +1485,7 @@ int LoadTestSetup(std::string configfile, TestVars &thesettings){
 				else if (sEmp == "CooldownLoopSecs") thesettings.cooldownloopsecs = stof(iEmp);
 				else if (sEmp == "CooldownVoltage") thesettings.cooldownvoltage = stof(iEmp);
 				else if (sEmp == "Threshold") thesettings.threshold = stoi(iEmp);
-				else if (sEmp == "ThresholdMode") thesettings.thresholdmode = stoi(iEmp); // potentiometer or programmed
+				else if (sEmp == "ThresholdMode") thesettings.thresholdmode = stoi(iEmp);
 				
 				else if (sEmp == "GainFileNameBase") thesettings.gainfilenamebase = iEmp;
 				else if (sEmp == "GainNumAcquisitions") thesettings.gainacquisitions = stoi(iEmp);
@@ -1456,6 +1493,11 @@ int LoadTestSetup(std::string configfile, TestVars &thesettings){
 				else if (sEmp == "GainLivePlotChannel") thesettings.gainliveplotchannel = stoi(iEmp);
 				else if (sEmp == "GainLivePlotFreq") thesettings.gainliveplotfreq = stoi(iEmp);
 				else if (sEmp == "GainPrintFreq") thesettings.gainprintfreq = stoi(iEmp);
+				
+				else if (sEmp == "NumAfterpulseAcquisitions") thesettings.numafterpulseacquisitions = stoi(iEmp);
+				else if (sEmp == "AfterpulseDisplayTime") thesettings.afterpulsedisplaytime = stoi(iEmp);
+				else if (sEmp == "AfterpulseThreshold") thesettings.afterpulsethreshold = stof(iEmp);
+				else if (sEmp == "AfterpulseWidth") thesettings.afterpulseminwidth = stof(iEmp);
 				
 				else if(settingPmtNames){
 					if(thesettings.pmtNames.size()>16){
@@ -1849,7 +1891,7 @@ int MeasureIntegralsFromWavedump(std::string waveformfile, std::vector<TBranch*>
 			
 			// from the peak sample, scan backwards for the start sample
 			int startmode = 2;
-			double thresholdfraction = 0.1;  // 20% of max
+			double thresholdfraction = 0.1;  // 10% of max
 			if(verbose) std::cout<<"threshold value set to "<<((peakamplitude-gauscentre)*thresholdfraction)<<" ADC counts"<<std::endl;
 			// 3 ways to do this:
 			// 0. scan away from peak until the first sample that changes direction
@@ -1898,18 +1940,6 @@ int MeasureIntegralsFromWavedump(std::string waveformfile, std::vector<TBranch*>
 			double integrated_volt_samples = -theintegral / (DT5730_ADC_TO_VOLTS*PREAMPLIFIER);
 			double ELECTRONS_PER_SECOND = (DT5730_SAMPLE_PERIOD/ELECTRON_CHARGE);
 			double thecharge = integrated_volt_samples*ELECTRONS_PER_SECOND/DT5730_INPUT_IMPEDANCE;
-			
-			// Afterpulse measurement! while we have the waveform data, and now that we have the DC offset,
-			// scan the waveform and count the number of pulses. Any > 1 are considered afterpulses.
-			int APinsamples = testsettings.afterpulseminsamplesabovethreshold;
-			int APoutsamples = testsettings.afterpulseminholdoffsamples;
-			double APthreshold = testsettings.afterpulsethresholdfraction;
-			for(auto aval : data){
-				double offsetsubtractedval = aval - gauscentre;
-				if(inpulse){
-					if(offsetsubtractedval > (APthreshold*peakamplitude
-				}
-			}
 			
 #if defined DRAW_WAVEFORMS || defined DRAW_BAD_WAVEFORMS
 			if(abs(thecharge)>40e6){   // if(abs(theintegral)>200e3)
