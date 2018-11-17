@@ -558,12 +558,17 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	int recorddataok = RunDigitizer(CC, thekeypressvars, testsettings.numafterpulseacquisitions,
 																	 testsettings.afterpulsedisplaytime, true);
 	
-	// FIXME we should pass branches and save to ROOT file, and save distributions of APratio
+	// Make the afterpulse file. Not HV dependant so not the same file as gain
+	TFile* fileout = new TFile(filename.c_str(),"RECREATE");
+	TTree* treeout = new TTree("afterpulsetree","Afterpulse data");
+	
 	
 	std::vector<std::vector<std::vector<double>>> alldata;  // readout, channel, datavalue
 	int loadok = LoadWavedumpFile("wave0.txt WaveDumpConfig_Afterpulse.txt", alldata);
 	
 	TH1D* hwaveform=nullptr;
+	std::string histtitle = "Charge in Initial Pulse / Charge in All Afterpulses; Percentage (%); Num Entries";
+	TH1D* hAPratios = new TH1D("hAPratios",histtitle.c_str(),200,0,100);
 	bool verbose=true;
 	
 	int numreadouts = alldata.size();
@@ -700,11 +705,25 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 			}
 			
 			/////////////////////////////////
-			// Calculate the ratio of charge in first peak to total charge
+			// Calculate the ratio of charge in first peak to afterpulse charge
 			/////////////////////////////////
-			double totalintegral=0;
+			// Afterpulsing extends ~12us(!) from initial pulse time
+			// there are two main windows of afterpulsing: one ~1us after trigger time
+			// that extends for ~2us, and a second window ~6us after the trigger time
+			// that extends for ~8us. we'll record the first and combined separately
+			
+			// first the prompt charge. Given that we're windowing things up in time,
+			// maybe we should merge pulses in the 'prompt' window??
+			
+			// first pulse: first 250 samples = 500ns
+			// first window: first samples 250-2500 = first 5us
+			// second window: remainder? <8us?
+			
+			double firstwindowtotafterpulsecharge=0;
 			for(int pulsei=0; pulsei<numpeaksfound; pulsei++){
-				totalintegral += peakintegrals.at(pulsei);
+				if(peakpositions.at(pulsei)>250&&peakpositions.at(pulsei)<2500){
+					firstwindowtotafterpulsecharge += peakintegrals.at(pulsei);
+				}
 			}
 			double largestpulse = (*(std::max_element(peakintegrals.begin(), peakintegrals.end())));
 			double chargeratio = (largestpulse / totalintegral) - 1.;
@@ -722,6 +741,8 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 		totAPs /= theAPratios.size();
 		averageAPratios.at(channeli) = totAPs;
 	}
+	
+	if(hwaveform){ delete hwaveform; hwaveform=nullptr; }
 	
 	return 1;
 }
