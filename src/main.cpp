@@ -45,9 +45,9 @@
 //#define DRAW_WAVEFORMS 1
 //#define FIT_OFFSET // Otherwise just use bin with most entries.
 //#define DRAW_OFFSETFIT 1
+//#define SAVE_WAVEFORM_DATA   // saves waveform data for channel 0
 //#define DRAW_AFTERPULSEH 1
 //#define DRAW_APWAVEFORM 1
-//#define SAVE_WAVEFORM_DATA   // saves waveform data for channel 0
 //#define DRAWAPTGRAPH 1
 
 // see CCDAQ.cpp in ANNIEDAQ:MRD branch for example on using the CAMAC internal stack
@@ -153,13 +153,14 @@ const int message=1;
 const int debug=2;
 
 // digitizer values
-const double PREAMPLIFIER = 1.;
-const double DT5730_INPUT_IMPEDANCE = 50.; // Ohms
-const double DT5730_SAMPLE_PERIOD = 2E-9;  // seconds
-const double DT5730_ADC_TO_VOLTS = 8192;   // depends on digitizer resolution
-const double ELECTRON_CHARGE = 1.6E-19;    // turn charge from coulombs to electrons
-const double MAX_PULSE_INTEGRAL = 20e6;    // exclude especially large pulses from PHD fit XXX may require tuning
-const double MIN_PULSE_AMPLITUDE = 6000;   // reject waveforms with no pulses from PHD fit, as slightly incorrect DC offset fit can result in peaks the whole window -> very large integrals
+constexpr double PREAMPLIFIER = 1.;
+constexpr double DT5730_INPUT_IMPEDANCE = 50.; // Ohms
+constexpr double DT5730_SAMPLE_PERIOD = 2E-9;  // seconds
+constexpr double ADC_NS_PER_SAMPLE = DT5730_SAMPLE_PERIOD/1e-9; // nanoseconds
+constexpr double DT5730_ADC_TO_VOLTS = 8192;   // depends on digitizer resolution
+constexpr double ELECTRON_CHARGE = 1.6E-19;    // turn charge from coulombs to electrons
+constexpr double MAX_PULSE_INTEGRAL = 20e6;    // exclude especially large pulses from PHD fit XXX may require tuning
+constexpr double MIN_PULSE_AMPLITUDE = 6000;   // reject waveforms with no pulses from PHD fit, as slightly incorrect DC offset fit can result in peaks the whole window -> very large integrals
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -564,6 +565,8 @@ int MeasureGain(Module &List, CamacCrate* CC, TestVars testsettings, KeyPressVar
 // ***************************************************************************
 int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekeypressvars){
 	
+	bool verbose=false;
+	
 	// Set up Wiener CCUSB to fire NIM O2 on ActionRegWrite rather than NIM O1
 	// (this is connected to a much brighter LED)
 	int wienersetupok = SetupWienerNIMout(CC, false, true);
@@ -576,7 +579,7 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	//int recorddataok = RunDigitizer(CC, thekeypressvars, testsettings.numafterpulseacquisitions, 1, "WaveDumpConfig_Afterpulse.txt", false);
 	
 	// Make the afterpulse file. Not HV dependant so not the same file as gain
-	std::string filename = testsettings.outdir+testsettings.afterpulsefilenamebase + ".root";
+	std::string filename = testsettings.outdir+"/"+testsettings.afterpulsefilenamebase + ".root";
 	TFile* fileout = new TFile(filename.c_str(),"RECREATE");
 	TTree* treeout = new TTree("afterpulsetree","Afterpulse data");
 	
@@ -587,8 +590,10 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	std::vector<std::vector<double>> afterpulsetimes(8);
 	std::vector<std::vector<double>> afterpulseamplitudes(8);
 	std::vector<std::vector<double>> afterpulseintegrals(8);
-	std::vector<double> initialtoafterpulsechargeratio(8);
-	std::vector<double> initialtoafterpulsechargeratioextended(8);
+	std::vector<double> totalafterpulseintegral(8);
+	std::vector<double> totalafterpulseintegralextended(8);
+	std::vector<double> afterpulsetoinitialchargeratio(8);
+	std::vector<double> afterpulsetoinitialchargeratioextended(8);
 	
 	// to store vectors in a tree we need to set branch addresses with a pointer to the vector
 	std::vector<double>* initialpulsetimep = &initialpulsetime;
@@ -597,8 +602,10 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	std::vector<std::vector<double>>* afterpulsetimesp = &afterpulsetimes;
 	std::vector<std::vector<double>>* afterpulseamplitudesp = &afterpulseamplitudes;
 	std::vector<std::vector<double>>* afterpulseintegralsp = &afterpulseintegrals;
-	std::vector<double>* initialtoafterpulsechargeratiop = &initialtoafterpulsechargeratio;
-	std::vector<double>* initialtoafterpulsechargeratioextendedp = &initialtoafterpulsechargeratioextended;
+	std::vector<double>* totalafterpulseintegralp = &totalafterpulseintegral;
+	std::vector<double>* totalafterpulseintegralextendedp = &totalafterpulseintegralextended;
+	std::vector<double>* afterpulsetoinitialchargeratiop = &afterpulsetoinitialchargeratio;
+	std::vector<double>* afterpulsetoinitialchargeratioextendedp = &afterpulsetoinitialchargeratioextended;
 	
 	treeout->Branch("InitialPulseTime",&initialpulsetimep);
 	treeout->Branch("InitialPulseAmplitude",&initialpulseamplitudep);
@@ -606,8 +613,10 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	treeout->Branch("AfterpulseTimes",&afterpulsetimesp);
 	treeout->Branch("AfterpulseAmplitudes",&afterpulseamplitudesp);
 	treeout->Branch("AfterpulseIntegrals",&afterpulseintegralsp);
-	treeout->Branch("InitialToAfterpulseChargeRatio",&initialtoafterpulsechargeratiop);
-	treeout->Branch("InitialToAfterpulseChargeRatioExtended",&initialtoafterpulsechargeratioextendedp);
+	treeout->Branch("TotalAfterpulseIntegral",&totalafterpulseintegralp);
+	treeout->Branch("TotalAfterpulseIntegralExtended",&totalafterpulseintegralextendedp);
+	treeout->Branch("AfterpulseToInitialChargeRatio",&afterpulsetoinitialchargeratiop);
+	treeout->Branch("AfterpulseToInitialChargeRatioExtended",&afterpulsetoinitialchargeratioextendedp);
 	
 	std::vector<std::vector<std::vector<double>>> alldata;  // readout, channel, datavalue
 	int loadok = LoadWavedumpFile("wave0.txt", alldata);
@@ -618,7 +627,6 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	TCanvas* waveformashist_canv=nullptr;
 	TH1D* waveformashist = nullptr;
 	std::vector<double> numberline;
-	bool verbose=true;
 	
 	TCanvas* apgraph_canv=nullptr;
 	TGraph* apgraph = nullptr;
@@ -629,6 +637,17 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 		
 		std::vector<std::vector<double>> &allreadoutdata = alldata.at(readout);
 		for(int channel=0; channel<8; channel++){
+			// clear the results from the last readout
+			initialpulsetime.at(channel) = 0;
+			initialpulseamplitude.at(channel) = 0;
+			initialpulseintegral.at(channel) = 0;
+			afterpulsetimes.at(channel).clear();
+			afterpulseamplitudes.at(channel).clear();
+			afterpulseintegrals.at(channel).clear();
+			totalafterpulseintegral.at(channel)=0;
+			totalafterpulseintegralextended.at(channel)=0;
+			afterpulsetoinitialchargeratio.at(channel)=0;
+			afterpulsetoinitialchargeratioextended.at(channel)=0;
 			
 			std::vector<double> data = allreadoutdata.at(channel);
 			
@@ -647,19 +666,22 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 			double maxvalue = (*(std::max_element(data.begin(),data.end())));
 			double minvalue = (*(std::min_element(data.begin(),data.end())));
 			if(hwaveform==nullptr){ hwaveform = new TH1D("hwaveform","Sample Distribution",200,minvalue,maxvalue); }
-			else { hwaveform->Reset(); hwaveform->SetAxisRange(minvalue, maxvalue, "X"); } // clear it's data and reset axis range
+			else { hwaveform->Reset(); hwaveform->SetBins(200, minvalue, maxvalue); } // clear it's data and reset axis range
 			for(double sampleval : data){ hwaveform->Fill(sampleval); }
 			
 			// short way: take tallest bin as DC offset - as a minimum, a good initial value for the fit
 			// ========================================
 			double gauscentre = hwaveform->GetXaxis()->GetBinCenter(hwaveform->GetMaximumBin());
-			std::cout<<"initial maximumbin gauscentre="<<gauscentre<<std::endl;
 			
 			// long way: fit the offset with a gaussian
 			// ========================================
-			peakfindcanv->cd();
 #ifdef DRAW_AFTERPULSEH
+			if(gROOT->FindObject("peakfindcanv")==nullptr){ peakfindcanv = new TCanvas("peakfindcanv"); }
+			peakfindcanv->cd();
 			hwaveform->Draw();
+			peakfindcanv->Modified();
+			peakfindcanv->Update();
+			gSystem->ProcessEvents();
 #else
 			hwaveform->Draw("goff");
 #endif
@@ -674,7 +696,6 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 			hwaveform->Fit(gausfit, "RQ");  // use R to limit range! This is what makes it work!
 			gauscentre = gausfit->GetParameter(1); // 0 is amplitude, 1 is centre, 2 is width
 			//if(verbose) std::cout<<"offset is "<<gauscentre<<std::endl;
-			std::cout<<"after fit, gauscentre is "<<gauscentre<<std::endl;
 			
 			/////////////////////////////////////
 			// Now find the pulses
@@ -696,7 +717,14 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 			gSystem->ProcessEvents();
 #endif
 			
-			double minwidth=2;
+/*		////////////////////////////////////////////
+			// Peak finder based on TSpectrum::Search()
+			////////////////////////////////////////////
+			// * doesn't always find peaks
+			// * must always find at least 1 peak, which requires removal as we may not always have one
+			// * sometimes marks multiple peaks in the same pulse as distinct, which would require fiddling to avoid
+			//   double counting in the pulse integrals
+			
 			// peak finder finds peaks based on a fraction of the peak
 			// but we might not really want this, an absolute threshold is probably better
 			// (especially as we may not have *any* pulses) so scale it out
@@ -711,12 +739,13 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 			}
 			// noMarkov disables smoothing before peak finding, which interferes with it actually working
 			// nobackground disables background subtraction before finding, which can give issues about invalid canvas ranges
-			waveformashist->ShowPeaks(testsettings.afterpulseminwidth,"nobackground noMarkov",finderthresholdfraction); // cannot use goff - we need the polymarkers
-			TPolyMarker* thepeakmarkers = (TPolyMarker*)waveformashist->FindObject("TPolyMarker");
+			waveformashist->ShowPeaks(testsettings.afterpulseminwidth,"nobackground noMarkov",finderthresholdfraction); // cannot use "goff"
+			TPolyMarker* thepeakmarkers = (TPolyMarker*)waveformashist->FindObject("TPolyMarker");                      // or no polymarkers
 			
 			int numpeaksfoundtemp=0;
 			if(thepeakmarkers) numpeaksfoundtemp = thepeakmarkers->GetN();
-			//if(verbose) std::cout<<"Found "<<numpeaksfoundtemp<<" peaks in afterpulse waveform for channel "<<channel<<", readout "<<readout<<" before pruning"<<std::endl;
+			//if(verbose) std::cout<<"Found "<<numpeaksfoundtemp<<" peaks in afterpulse waveform for channel "
+			//										 <<channel<<", readout "<<readout<<" before pruning"<<std::endl;
 #ifdef DRAW_APWAVEFORM
 			do{
 				gSystem->ProcessEvents();
@@ -724,13 +753,11 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 			} while (gROOT->FindObject("waveformashist_canv")!=nullptr); // wait until user closes canvas
 #endif
 			if(numpeaksfoundtemp==0){
-				// set any tree variables needed for alignment here
-				// shouldn't be any
 				continue;
 			}
 			std::vector<double> peakpositions(thepeakmarkers->GetX(),thepeakmarkers->GetX()+numpeaksfoundtemp);
 			std::vector<double> peakamplitudes(thepeakmarkers->GetY(),thepeakmarkers->GetY()+numpeaksfoundtemp);
-			// XXX IMPORTANT XXX
+			// *** IMPORTANT ***
 			// the ShowPeaks / TSpectrum::Search function takes a threshold *relative to the histogram maximum*,
 			// which MUST be between 0-1. This means it necessarily finds at least 1 peak! (except when it doesn't...)
 			// we need to prune off these small peaks
@@ -742,10 +769,48 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 					numpeaksfound--;
 				}
 			}
-			if(verbose) std::cout<<"Found "<<numpeaksfound<<" peaks in afterpulse waveform for channel "<<channel<<", readout "<<readout<<" after pruning"<<std::endl;
+			if(verbose) std::cout<<"Found "<<numpeaksfound<<" peaks after pruning"<<std::endl;
+			
+			// End of peak finder based on TSpectrum::Search()
+			//////////////////////////////////////////////////
+			*/
+			
+			/////////////////////////////////////
+			// Manual peak finder
+			/////////////////////////////////////
+			std::vector<double> peakpositions;
+			std::vector<double> peakamplitudes;
+			bool inpeak=false;
+			int peakamp=0;
+			int peakmaxsample=-1;
+			int startsample=-1;
+			int endsample=-1;
+			for(int samplei=0; samplei<data.size(); samplei++){
+				if(not inpeak){
+					if((gauscentre-data.at(samplei))>testsettings.afterpulsethreshold){
+						inpeak=true;
+						startsample=samplei;
+						peakmaxsample=samplei;
+						peakamp = (gauscentre-data.at(samplei));
+					}
+				} else {
+					if((gauscentre-data.at(samplei))<testsettings.afterpulsethreshold){
+						inpeak=false;
+						endsample=samplei;
+						if((endsample-startsample)>testsettings.afterpulseminwidth){
+							peakpositions.push_back(peakmaxsample);
+							peakamplitudes.push_back(peakamp);
+						}
+						peakamp=0;
+					} else if((gauscentre-data.at(samplei))>peakamp){
+						peakamp = (gauscentre-data.at(samplei));
+						peakmaxsample = samplei;
+					}
+				}
+			}
+			int numpeaksfound=peakamplitudes.size();
+			
 			if(numpeaksfound==0){
-				// set any tree variables needed for alignment here
-				// shouldn't be any
 				continue;
 			}
 			
@@ -754,21 +819,15 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 			/////////////////////////////////////
 			for(int pulsei=0; pulsei<numpeaksfound; pulsei++){
 				
-				uint16_t peaksample = peakpositions.at(pulsei); // this is the same only because we find peaks using a TH1 with one bin per sample!!!
+				uint16_t peaksample = peakpositions.at(pulsei);
 				double peakamplitude = data.at(peaksample);
 				if(verbose) std::cout<<"peak sample is at "<<peaksample<<" with peak value "<<peakamplitude<<std::endl;
 				
 				// from the peak sample, scan backwards for the start sample
 				int startmode = 2;
 				double thresholdfraction = 0.1;  // 10% of max
-				if(verbose) std::cout<<"integration threshold value set to "<<(((peakamplitude-gauscentre)*thresholdfraction)+gauscentre)<<" ADC counts"<<std::endl;
-				std::cout<<"gauscentre = "<<gauscentre<<std::endl;
-				for(int tempsamplei=std::max(int(0),static_cast<int>(peaksample-10));
-								tempsamplei<std::min(static_cast<int>(data.size()),static_cast<int>(peaksample+10));
-								tempsamplei++){
-					std::cout<<"("<<tempsamplei<<", "<<data.at(tempsamplei)<<") ";
-				}
-				std::cout<<std::endl;
+				//if(verbose) std::cout<<"integration threshold value set to "
+				//										 <<(((peakamplitude-gauscentre)*thresholdfraction)+gauscentre)<<" ADC counts"<<std::endl;
 				// 3 ways to do this:
 				// 0. scan away from peak until the first sample that changes direction
 				// 1. scan away from peak until the first sample that crosses offset
@@ -811,8 +870,7 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 				}
 				if(verbose) std::cout<<"pulse integral = "<<theintegral<<std::endl;
 				
-//#ifdef DRAWAPTGRAPH
-			if(numpeaksfound>50){
+#ifdef DRAWAPTGRAPH
 				if(apgraph){ delete apgraph; }
 				if(numberline.size()==0){ // we can re-use as all readouts have the same vector length
 					numberline.resize(data.size());
@@ -830,16 +888,15 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 					gSystem->ProcessEvents();
 					std::this_thread::sleep_for(std::chrono::milliseconds(100));
 				} while (gROOT->FindObject("apgraph_canv")!=nullptr); // wait until user closes canvas
-			}
-//#endif
+#endif
 				
 				// add the results into the vectors for this channel
 				if(pulsei==0){
-					initialpulsetime.at(channel) = peakpositions.at(pulsei);
+					initialpulsetime.at(channel) = peakpositions.at(pulsei)*ADC_NS_PER_SAMPLE;
 					initialpulseamplitude.at(channel) = peakamplitude;
 					initialpulseintegral.at(channel) = theintegral;
 				} else {
-					afterpulsetimes.at(channel).push_back(peakpositions.at(pulsei));
+					afterpulsetimes.at(channel).push_back(peakpositions.at(pulsei)*ADC_NS_PER_SAMPLE);
 					afterpulseamplitudes.at(channel).push_back(peakamplitudes.at(pulsei));
 					afterpulseintegrals.at(channel).push_back(theintegral);
 				}
@@ -854,44 +911,47 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 			// that extends for ~2us, and a second window ~6us after the trigger time
 			// that extends for ~8us. we'll record the first and combined separately
 			
-			// first the prompt charge. Given that we're windowing things up in time,
-			// maybe we should merge pulses in the 'prompt' window??
-			
-			// first pulse: first 250 samples = 500ns
-			// first window: first samples 250-2500 = first 5us
-			// second window: remainder
+			// initial pulse: first 250 samples = 500ns
+			// first afterpulse window: samples 250-2500 = next 5us
+			// second afterpulse window: remainder
 			
 			if(verbose){
 				std::cout<<"calculating total afterpulse charge from "<<afterpulseintegrals.at(channel).size()
 								 <<" delayed pulses"<<std::endl;
 			}
-			
 			double shortwindowtotafterpulsecharge=0;
-			// XXX we could take the integral of the afterpulse charge as the sum of integrals of all afterpulses
-			// or we could just integrate the entire waveform over the respective windows. 
-			for(int pulsei=0; pulsei<numpeaksfound; pulsei++){
+			for(int pulsei=1; pulsei<numpeaksfound; pulsei++){
 				if(peakpositions.at(pulsei)>500&&peakpositions.at(pulsei)<5000){
-					shortwindowtotafterpulsecharge += afterpulseintegrals.at(channel).at(pulsei);
+					shortwindowtotafterpulsecharge += afterpulseintegrals.at(channel).at(pulsei-1);
 				}
 			}
-			double extendedwindowtotafterpulsecharge=0;
-			for(int pulsei=0; pulsei<numpeaksfound; pulsei++){
-				if(peakpositions.at(pulsei)>500){
-					extendedwindowtotafterpulsecharge += afterpulseintegrals.at(channel).at(pulsei);
-				}
-			}
-			double shortratio = (shortwindowtotafterpulsecharge==0) ? 0 : (initialpulseintegral.back()/shortwindowtotafterpulsecharge) * 100.;
-			double longratio = (extendedwindowtotafterpulsecharge==0) ? 0 : (initialpulseintegral.back()/extendedwindowtotafterpulsecharge) * 100.;
+			totalafterpulseintegral.at(channel)=shortwindowtotafterpulsecharge;
 			
-			initialtoafterpulsechargeratio.at(channel) = shortratio;
-			initialtoafterpulsechargeratioextended.at(channel) = longratio;
-			if(verbose) std::cout<<"shortratio = "<<shortratio<<", longratio = "<<longratio<<std::endl;
+			double extendedwindowtotafterpulsecharge=0;
+			for(int pulsei=1; pulsei<numpeaksfound; pulsei++){
+				if(peakpositions.at(pulsei)>500){
+					extendedwindowtotafterpulsecharge += afterpulseintegrals.at(channel).at(pulsei-1);
+				}
+			}
+			totalafterpulseintegralextended.at(channel)=extendedwindowtotafterpulsecharge;
+			double shortratio = (shortwindowtotafterpulsecharge==0) ? 0 : (shortwindowtotafterpulsecharge/initialpulseintegral.at(channel)) * 100.;
+			double longratio = (extendedwindowtotafterpulsecharge==0) ? 0 : (extendedwindowtotafterpulsecharge/initialpulseintegral.at(channel)) * 100.;
+			
+			afterpulsetoinitialchargeratio.at(channel) = shortratio;
+			afterpulsetoinitialchargeratioextended.at(channel) = longratio;
+			if(verbose){
+				std::cout<<", initial charge = "<<initialpulseintegral.at(channel)
+								 <<", short charge = "<<shortwindowtotafterpulsecharge
+								 <<", extended charge = "<<extendedwindowtotafterpulsecharge
+								 <<", shortratio = "<<shortratio<<", longratio = "<<longratio<<std::endl;
+			}
 			
 		} // loop over channels
 		
 		treeout->Fill();
 		
 	} // loop over readouts
+	if(verbose) std::cout<<"done loop over readouts, taking averages"<<std::endl;
 	
 	if(gROOT->FindObject("peakfindcanv")){ peakfindcanv->Close(); delete peakfindcanv; peakfindcanv=nullptr; gSystem->ProcessEvents(); }
 	if(gROOT->FindObject("waveformashist_canv")){ waveformashist_canv->Close(); delete waveformashist_canv; waveformashist_canv=nullptr; gSystem->ProcessEvents(); }
@@ -912,14 +972,14 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	canvafterpulse->cd();
 	TH1D* hAfterpulse = new TH1D("hafterpulse","placeholder; Ratio (%); Entries",100,0,10);
 	TF1* afterpulsefit = new TF1("afterpulsefit","gaus",0,10);
-	for(int channeli=0; channeli<8; channeli++){
+	for(int channeli=0; channeli<testsettings.pmtNames.size(); channeli++){
 		
 		// First draw and fit the distribution with the short afterpulse window
 		if(hAfterpulse) hAfterpulse->Reset();
-		std::string histtitle = "Charge in Initial Pulse / Charge in All Afterpulses "+testsettings.pmtNames.at(channeli);
+		std::string histtitle = "Charge in All Afterpulses / Charge in Initial Pulse "+testsettings.pmtNames.at(channeli);
 		hAfterpulse->SetTitle(histtitle.c_str());
-		TString selectionstring = TString::Format("InitialToAfterpulseChargeRatio[%d]>>hafterpulse",channeli);
-		treeout->Draw(selectionstring.Data(),"InitialPulseAmplitude>0");
+		TString selectionstring = TString::Format("AfterpulseToInitialChargeRatio[%d]>>hafterpulse",channeli);
+		treeout->Draw(selectionstring.Data(),TString::Format("InitialPulseAmplitude[%d]>0&&InitialPulseTime[%d]<%d",channeli,channeli,500));
 		
 		// get some starting values for the fit
 		double amplitude=hAfterpulse->GetBinContent(hAfterpulse->GetMaximumBin());  // XXX may require tuning
@@ -940,11 +1000,11 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 		
 		// repeat the drawing and fit for the extended afterpulse window
 		if(hAfterpulse) hAfterpulse->Reset();
-		histtitle = "Charge in Initial Pulse / Charge in All Afterpulses [Extended Window] "
+		histtitle = "Charge in All Afterpulses / Charge in Initial Pulse [Extended Window] "
 															+testsettings.pmtNames.at(channeli);
 		hAfterpulse->SetTitle(histtitle.c_str());
-		selectionstring = TString::Format("InitialToAfterpulseChargeRatioExtended[%d]>>hafterpulse",channeli);
-		treeout->Draw(selectionstring.Data(),"InitialPulseAmplitude>0");
+		selectionstring = TString::Format("AfterpulseToInitialChargeRatioExtended[%d]>>hafterpulse",channeli);
+		treeout->Draw(selectionstring.Data(),TString::Format("InitialPulseAmplitude[%d]>0&&InitialPulseTime[%d]<%d",channeli,channeli,500));
 		
 		// get some starting values for the fit
 		amplitude=hAfterpulse->GetBinContent(hAfterpulse->GetMaximumBin());  // XXX may require tuning
