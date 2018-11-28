@@ -8,8 +8,10 @@
 #
 #Type	Slot	#Register file
 SCA	1	configfiles/SCAreg
-ADC	2  	configfiles/ADCreg
+SCA	2	configfiles/SCAreg
+#ADC	3  	configfiles/ADCreg
+#ADC	4  	configfiles/ADCreg
 DISC	5	configfiles/DiscReg
 #TDC	18	configfiles/TDCreg
-#CAEN	1	configfiles/CAENreg
+CAEN	1	configfiles/CAENreg
 

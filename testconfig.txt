@@ -1,7 +1,7 @@
 # Test configuration file
 # Setup what PMT tests should be run and their settings
 #
-CooldownFileNameBase                  cooldown             # suffix will be appended in program. if "NA", test not performed.
+CooldownFileNameBase                  NA             # suffix will be appended in program. if "NA" test not performed.
 CooldownTotalMins                     2                    # 20 minutes total test duration
 CooldownCountSecs                     20                   # rates will be measured over 60s
 CooldownLoopSecs                      30                   # rates will be measured every 60 - i.e., no wait between measurements
@@ -9,17 +9,18 @@ CooldownVoltage                       1500                 # 1500 V? suitable?
 Threshold                             15                   # discriminator threshold in mV. 15 mV miminum, 1V maximum
 ThresholdMode                         0                    # 0 = use programmed threshold, 1 = use FP potentiometer
 #
-GainFileNameBase                      gain                 # voltage and suffix will be appended
+GainFileNameBase                      NA                 # voltage and suffix will be appended. if "NA" test not performed.
 GainNumAcquisitions                   10000                # num QDC reads to use for gain measurement
 GainLivePlot                          1                    # 1 or 0, show live plot of one channel during acquisition
 GainLivePlotChannel                   0                    # which QDC channel to show
 GainLivePlotFreq                      500                  # update the plot once every n'th acquisition. lower is slower.
 GainPrintFreq                         500                  # print read values once every n'th acquisition. lower is slower.
 #
+AfterpulseFileNameBase                afterpulse           # suffix will be appended. if "NA" test not performed.
 NumAfterpulseAcquisitionsToDisplay    10                   # how many waveforms to display to look for afterpulsing
-AfterpulseDisplayTime                 2000                 # milliseconds to show the waveform for afterpulse checking
-NumAfterpulseAcquisitions             50                   # how many waveforms to use for afterpulse rate measurement
-AfterpulseThreshold                   20                   # threshold ADC counts for identifying afterpulses
+AfterpulseDisplayTime                 500                  # milliseconds to show the waveform for afterpulse checking
+NumAfterpulseAcquisitions             1000                 # how many waveforms to use for afterpulse rate measurement
+AfterpulseThreshold                   20                    # threshold ADC counts for identifying afterpulses
 AfterpulseWidth                       2                    # minimum width in ADC samples for identifying afterpulses
 #
 #                                                          # list of PMT IDs. QDC / discriminator.
