@@ -47,3 +47,6 @@ wienertest: include/Camac lib/Camac
 
 plotwaveforms:
 	g++ $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) src/plot_wavedump.cpp -o plot_wavedump -I include -Llib -lpthread
+
+fixkeys:
+	g++ $(CXXFLAGS) src/restore_key_repeat.cpp -o fixkeys -lX11 -lXtst
