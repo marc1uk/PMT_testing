@@ -21,6 +21,10 @@ class PMTTestingHVcontrol{
 
   std::string HVIP;
   int HVPort;
+
+  template <typename T>
+  std::string EncodePair(std::string key, T value);
+  
 };
 
 

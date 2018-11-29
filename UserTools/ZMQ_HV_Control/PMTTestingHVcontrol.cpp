@@ -6,6 +6,36 @@ PMTTestingHVcontrol::PMTTestingHVcontrol(std::string HVIPin="192.168.163.61", in
 
 }
 
+// template specializations must come before any implicit uses: so these need to be at the top of the file
+template <typename T>
+std::string PMTTestingHVcontrol::EncodePair(std::string key, T value){
+  std::string output = "\"" + key + "\":\"" + std::to_string(value) + "\"";
+  return output;
+}
+
+template <>
+std::string PMTTestingHVcontrol::EncodePair<std::string>(std::string key, std::string value){
+  std::string output = "\"" + key + "\":\"" + value + "\"";
+  return output;
+}
+
+template <>
+std::string PMTTestingHVcontrol::EncodePair<const char*>(std::string key, const char* value){
+  std::string output = "\"" + key + "\":\"" + std::string(value) + "\"";
+  return output;
+}
+
+template <>
+std::string PMTTestingHVcontrol::EncodePair<char*>(std::string key, char* value){
+  std::string output = "\"" + key + "\":\"" + std::string(value) + "\"";
+  return output;
+}
+
+//std::string PMTTestingHVcontrol::EncodePair(std::string key, std::string value){
+//  std::string output = "\"" + key + "\":\"" + value + "\"";
+//  return output;
+//}
+
 bool PMTTestingHVcontrol::SetRun(int run_number, int subrun_number){
 
   zmq::context_t* Context = new zmq::context_t(1); //???, apparently it should be ok...
@@ -38,57 +68,14 @@ bool PMTTestingHVcontrol::SetRun(int run_number, int subrun_number){
   zmq::poll (&HVout[0], 1, 10000);
   if (HVout[0].revents & ZMQ_POLLOUT) {
 
-    std::string message_id="msg_id";
-    std::string message_type="msg_type";
-    std::string run_num="run";
-    std::string subrun_num="subrun";
-    std::string curly_left="{";
-    std::string curly_right="}";
-    std::string colon=":";
-    std::string comma=",";
-    std::string quotation="\"";
-
+    int message_id = 1;
     
-
-    std::string message_id_value="1";
-    std::string message_type_value="run";
-    std::stringstream ss;
-    ss<<run_number;
-    std::string run_num_value=ss.str();
-    std::stringstream ss2;
-    ss2<<subrun_number;
-    std::string subrun_num_value=ss2.str();
-
     std::string tmp="";
-
-    tmp.append(curly_left);
-    tmp.append(quotation);
-    tmp.append(message_id);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(message_id_value);
-    tmp.append(comma);
-    tmp.append(quotation);
-    tmp.append(message_type);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(quotation);
-    tmp.append(message_type_value);
-    tmp.append(quotation);
-    tmp.append(comma);
-    tmp.append(quotation);
-    tmp.append(run_num);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(run_num_value);
-    tmp.append(comma);
-    tmp.append(quotation);
-    tmp.append(subrun_num);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(subrun_num_value);
-    tmp.append(curly_right);
-
+    tmp += "{" + EncodePair("msg_id",message_id);
+    tmp += "," + EncodePair("msg_type","run");
+    tmp += "," + EncodePair("run",run_number);
+    tmp += "," + EncodePair("subrun",subrun_number) + "}";
+    
    // bb>>tmp;
     zmq::message_t send(tmp.length()+1);
     snprintf ((char *) send.data(), tmp.length()+1 , "%s" ,tmp.c_str()) ;
@@ -105,15 +92,15 @@ bool PMTTestingHVcontrol::SetRun(int run_number, int subrun_number){
 
       zmq::poll (&HVin[0], 1, 20000);
       if (HVin[0].revents & ZMQ_POLLIN) {
-	
-	HV.recv(&message);
+        
+        HV.recv(&message);
 
-	std::istringstream iss2(static_cast<char*>(message.data()));
-	
+        std::istringstream iss2(static_cast<char*>(message.data()));
+        
       }
       else {
-	             std::cout<<"reply from HV time out"<<std::endl;
-	             //return false;
+                     std::cout<<"reply from HV time out"<<std::endl;
+                     //return false;
       }
     }
     else {
@@ -168,57 +155,14 @@ bool PMTTestingHVcontrol::SetVoltage(int voltage){
   zmq::poll (&HVout[0], 1, 10000);
   if (HVout[0].revents & ZMQ_POLLOUT) {
     
-    std::string message_id="msg_id";
-    std::string message_type="msg_type";
-    std::string message_property="msg_property";
-    std::string last_key="active";
-    std::string curly_left="{";
-    std::string curly_right="}";
-    std::string colon=":";
-    std::string comma=",";
-    std::string quotation="\"";
-
-    
-
-    std::string message_id_value="2";
-    std::string message_type_value="write";
-    std::string message_property_value="vset";
-    std::stringstream ss;
-    ss<<voltage;
-    std::string voltage_value=ss.str();
+    int message_id = 2;
 
     std::string tmp="";
+    tmp += "{" + EncodePair("msg_id",message_id);
+    tmp += "," + EncodePair("msg_type","write");
+    tmp += "," + EncodePair("msg_property","vset");
+    tmp += "," + EncodePair("active",voltage) + "}";
 
-    tmp.append(curly_left);
-    tmp.append(quotation);
-    tmp.append(message_id);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(message_id_value);
-    tmp.append(comma);
-    tmp.append(quotation);
-    tmp.append(message_type);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(quotation);
-    tmp.append(message_type_value);
-    tmp.append(quotation);
-    tmp.append(comma);
-    tmp.append(quotation);
-    tmp.append(message_property);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(quotation);
-    tmp.append(message_property_value);
-    tmp.append(quotation);
-    tmp.append(comma);
-    tmp.append(quotation);
-    tmp.append(last_key);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(voltage_value);
-    tmp.append(curly_right);
-    
     zmq::message_t send(tmp.length()+1);
     snprintf ((char *) send.data(), tmp.length()+1 , "%s" ,tmp.c_str()) ;
     HV.send(send);
@@ -290,54 +234,13 @@ bool PMTTestingHVcontrol::GetEvent(){
   zmq::poll (&HVout[0], 1, 10000);
   if (HVout[0].revents & ZMQ_POLLOUT) {
 
-    std::string message_id="msg_id";
-    std::string message_type="msg_type";
-    std::string message_property="msg_property";
-    std::string last_key="XXX";
-    std::string curly_left="{";
-    std::string curly_right="}";
-    std::string colon=":";
-    std::string comma=",";
-    std::string quotation="\"";
-
-    std::string message_id_value="3";
-    std::string message_type_value="get";
-    std::string message_property_value="event";
-    std::string last_value="XXX";
-
+    int message_id=3;
+    
     std::string tmp="";
-
-    tmp.append(curly_left);
-    tmp.append(quotation);
-    tmp.append(message_id);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(message_id_value);
-    tmp.append(comma);
-    tmp.append(quotation);
-    tmp.append(message_type);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(quotation);
-    tmp.append(message_type_value);
-    tmp.append(quotation);
-    tmp.append(comma);
-    tmp.append(quotation);
-    tmp.append(message_property);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(quotation);
-    tmp.append(message_property_value);
-    tmp.append(quotation);
-    tmp.append(comma);
-    tmp.append(quotation);
-    tmp.append(last_key);
-    tmp.append(quotation);
-    tmp.append(colon);
-    tmp.append(quotation);
-    tmp.append(last_value);
-    tmp.append(quotation);
-    tmp.append(curly_right);
+    tmp += "{" + EncodePair("msg_id",message_id);
+    tmp += "," + EncodePair("msg_type","get");
+    tmp += "," + EncodePair("msg_property","event");
+    tmp += "," + EncodePair("XXX","XXX") + "}";
     
     zmq::message_t send(tmp.length()+1);
     snprintf ((char *) send.data(), tmp.length()+1 , "%s" ,tmp.c_str()) ;
@@ -354,63 +257,49 @@ bool PMTTestingHVcontrol::GetEvent(){
     
       zmq::poll (&HVin[0], 1, 10000);
       if (HVin[0].revents & ZMQ_POLLIN) {
-	
-	         HV.recv(&message);
+        
+                 HV.recv(&message);
 
-	         std::istringstream issb(static_cast<char*>(message.data()));
+                 std::istringstream issb(static_cast<char*>(message.data()));
 
-	         zmq::poll (&HVout[0], 1, 10000);
-	         if (HVout[0].revents & ZMQ_POLLOUT) {
-	  
-	  
-                  message_id_value="4";
-                  message_property_value="error";
-	                tmp="";
-                  tmp.append(curly_left);
-                  tmp.append(quotation);
-                  tmp.append(message_id);
-                  tmp.append(quotation);
-                  tmp.append(colon);
-                  tmp.append(message_id_value);
-                  tmp.append(curly_right);
-                  tmp.append(comma);
-                  tmp.append(curly_left);
-                  tmp.append(quotation);
-                  tmp.append(message_property);
-                  tmp.append(quotation);
-                  tmp.append(colon);
-                  tmp.append(quotation);
-                  tmp.append(message_property_value);
-                  tmp.append(quotation);
-                  tmp.append(curly_right);
+                 zmq::poll (&HVout[0], 1, 10000);
+                 if (HVout[0].revents & ZMQ_POLLOUT) {
+          
+          
+                  message_id=4;
+                  tmp="";
+                  tmp += "{" + EncodePair("msg_id",message_id);
+                  tmp += "," + EncodePair("msg_type","get");
+                  tmp += "," + EncodePair("msg_property","error");
+                  tmp += "," + EncodePair("XXX","XXX") + "}";
 
 
-	                zmq::message_t send2(tmp.length()+1);
-	                snprintf ((char *) send2.data(), tmp.length()+1 , "%s" ,tmp.c_str()) ;
-	                HV.send(send2);
-	                //std::cout<<"sent "<<tmp<<std::endl;
-	  
-	  
-	                zmq::poll (&HVin[0], 1, 10000);
-	                if (HVin[0].revents & ZMQ_POLLIN) {
-	    
-	                        zmq::message_t message2;
-	                        HV.recv(&message2);
-	   
-	                        std::istringstream iss2(static_cast<char*>(message2.data()));
-	    
-	    
-	                         zmq::poll (&HVin[0], 1, 10000);
-	                         if (HVin[0].revents & ZMQ_POLLIN) {
-	      
-	                                HV.recv(&message2);
-	                                std::istringstream iss2b(static_cast<char*>(message2.data()));
-	                         }
-	                         else std::cout<<"HV reply timeout"<<std::endl;
-	                 } 
-	                else std::cout<<"HV akn reply timeout"<<std::endl;
-	           }
-	           else std::cout<<"HV send timeout"<<std::endl;
+                  zmq::message_t send2(tmp.length()+1);
+                  snprintf ((char *) send2.data(), tmp.length()+1 , "%s" ,tmp.c_str()) ;
+                  HV.send(send2);
+                  //std::cout<<"sent "<<tmp<<std::endl;
+    
+    
+                  zmq::poll (&HVin[0], 1, 10000);
+                  if (HVin[0].revents & ZMQ_POLLIN) {
+      
+                          zmq::message_t message2;
+                          HV.recv(&message2);
+     
+                          std::istringstream iss2(static_cast<char*>(message2.data()));
+      
+      
+                           zmq::poll (&HVin[0], 1, 10000);
+                           if (HVin[0].revents & ZMQ_POLLIN) {
+        
+                                  HV.recv(&message2);
+                                  std::istringstream iss2b(static_cast<char*>(message2.data()));
+                           }
+                           else std::cout<<"HV reply timeout"<<std::endl;
+                   } 
+                  else std::cout<<"HV akn reply timeout"<<std::endl;
+             }
+             else std::cout<<"HV send timeout"<<std::endl;
       }
       else std::cout<<"HV reply timeout"<<std::endl;
     }
