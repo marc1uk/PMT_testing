@@ -13,5 +13,5 @@ SCA	2	configfiles/SCAreg
 #ADC	4  	configfiles/ADCreg
 DISC	5	configfiles/DiscReg
 #TDC	18	configfiles/TDCreg
-CAEN	1	configfiles/CAENreg
+#CAEN	1	configfiles/CAENreg
 

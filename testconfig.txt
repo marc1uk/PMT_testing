@@ -9,17 +9,17 @@ CooldownVoltage                       1500                 # 1500 V? suitable?
 Threshold                             15                   # discriminator threshold in mV. 15 mV miminum, 1V maximum
 ThresholdMode                         0                    # 0 = use programmed threshold, 1 = use FP potentiometer
 #
-GainFileNameBase                      NA                 # voltage and suffix will be appended. if "NA" test not performed.
+GainFileNameBase                      gain                 # voltage and suffix will be appended. if "NA" test not performed.
 GainNumAcquisitions                   10000                # num QDC reads to use for gain measurement
 GainLivePlot                          1                    # 1 or 0, show live plot of one channel during acquisition
 GainLivePlotChannel                   0                    # which QDC channel to show
 GainLivePlotFreq                      500                  # update the plot once every n'th acquisition. lower is slower.
 GainPrintFreq                         500                  # print read values once every n'th acquisition. lower is slower.
 #
-AfterpulseFileNameBase                afterpulse           # suffix will be appended. if "NA" test not performed.
+AfterpulseFileNameBase                NA           # suffix will be appended. if "NA" test not performed.
 NumAfterpulseAcquisitionsToDisplay    10                   # how many waveforms to display to look for afterpulsing
 AfterpulseDisplayTime                 500                  # milliseconds to show the waveform for afterpulse checking
-NumAfterpulseAcquisitions             1000                 # how many waveforms to use for afterpulse rate measurement
+NumAfterpulseAcquisitions             5000                 # how many waveforms to use for afterpulse rate measurement
 AfterpulseThreshold                   20                    # threshold ADC counts for identifying afterpulses
 AfterpulseWidth                       2                    # minimum width in ADC samples for identifying afterpulses
 #
@@ -32,7 +32,11 @@ Potato
 #EndPmtNames
 #
 #StartGainVoltages                                         # list of HVs at which to measure gain.
-1500
-#1700
-#2000
+1200
+1400
+1600
+1700
+1800
+1900
+2000
 #EndGainVoltages
