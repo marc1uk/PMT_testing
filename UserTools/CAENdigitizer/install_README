@@ -1,0 +1,50 @@
+## local installation of caen waveformdump for installation of CAEN 5730B digitizer drivers
+
+ mkdir /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer
+ cd /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer
+ # download the tars here
+ tar -xzf CAENComm-1.2-build20140211.tgz
+ tar -xzf CAENDigitizer_2.11.0_20180212.tgz
+ tar -xzf CAENVMELib-2.50.tgz
+ tar -xzf wavedump-3.8.2.tar.gz
+ mkdir install
+ mkdir etc
+ mkdir wavedump-3.8.2/include
+ cp /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/CAENComm-1.2/include/* wavedump-3.8.2/include/
+ cp /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/CAENDigitizer_2.11.0/include/* wavedump-3.8.2/include/
+ cp /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/CAENVMELib-2.50/include/* wavedump-3.8.2/include/
+ mkdir wavedump-3.8.2/libs
+ cp /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/CAENComm-1.2/lib/x64/libCAENComm.so.1.2.0 wavedump-3.8.2/libs/
+ cp /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/CAENDigitizer_2.11.0/lib/x86_64/libCAENDigitizer.so.2.11.0 wavedump-3.8.2/libs/
+ cp /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/CAENVMELib-2.50/lib/x64/libCAENVME.so.2.50 wavedump-3.8.2/libs/
+ cd wavedump-3.8.2/libs/
+ ln -sf libCAENVME.so.2.50 libCAENVME.so
+ ln -sf libCAENComm.so.1.2.0 libCAENComm.so
+ ln -sf libCAENDigitizer.so.2.11.0 libCAENDigitizer.so
+ export LD_LIBRARY_PATH=$PWD:$LD_LIBRARY_PATH
+ cd ..
+ 
+ ## modify configure file line 4295 to comment out the following function:
+ # if test $a == 1; then
+ #         as_fn_error $? "
+ #                 CAENDigitizer >= 2.11 must be installed on your system." "$LINENO" 5
+ # fi
+ 
+ ./configure --prefix=/home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/install --exec-prefix=/home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/etc --datadir=/home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/etc
+ 
+ ## in line 232 of Makefile, modify the LDFLAGS:
+ LDFLAGS = -Llibs -lCAENVME -lCAENComm -lCAENDigitizer
+ ## at the very bottom of Makefile, alter the paths to /etc/wavedump configuration files
+ install-data-hook:
+        chmod 666 /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/etc/wavedump/WaveDumpConfig.txt
+        chmod 666 /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/etc/wavedump/WaveDumpConfig_X742.txt
+ 
+ ## in line 221 of src/Makefile, similarly modify the LDFLAGS:
+ LDFLAGS = -L../libs -lCAENVME -lCAENComm -lCAENDigitizer
+ ## in line 253 of src/Makefile, modify the path to write the configuration files
+ datadir = /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/etc/wavedump/
+ 
+ make
+ make install
+ 
+

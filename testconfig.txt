@@ -11,16 +11,16 @@ ThresholdMode                         0                    # 0 = use programmed 
 #
 GainFileNameBase                      gain                 # voltage and suffix will be appended. if "NA" test not performed.
 GainNumAcquisitions                   10000                # num QDC reads to use for gain measurement
-GainLivePlot                          1                    # 1 or 0, show live plot of one channel during acquisition
-GainLivePlotChannel                   0                    # which QDC channel to show
-GainLivePlotFreq                      500                  # update the plot once every n'th acquisition. lower is slower.
-GainPrintFreq                         500                  # print read values once every n'th acquisition. lower is slower.
+GainLivePlot                          1                    # 1 or 0, show live plot of one channel during acquisition.       (Deprecated)
+GainLivePlotChannel                   0                    # which QDC channel to show.                                      (Deprecated)
+GainLivePlotFreq                      500                  # update the plot once every n'th acquisition. lower is slower.   (Deprecated)
+GainPrintFreq                         500                  # print read values once every n'th acquisition. lower is slower. (Deprecated)
 #
-AfterpulseFileNameBase                NA           # suffix will be appended. if "NA" test not performed.
-NumAfterpulseAcquisitionsToDisplay    10                   # how many waveforms to display to look for afterpulsing
+AfterpulseFileNameBase                afterpulse           # suffix will be appended. if "NA" test not performed.
+NumAfterpulseAcquisitionsToDisplay    0                    # how many waveforms to display to look for afterpulsing
 AfterpulseDisplayTime                 500                  # milliseconds to show the waveform for afterpulse checking
 NumAfterpulseAcquisitions             5000                 # how many waveforms to use for afterpulse rate measurement
-AfterpulseThreshold                   20                    # threshold ADC counts for identifying afterpulses
+AfterpulseThreshold                   20                   # threshold ADC counts for identifying afterpulses
 AfterpulseWidth                       2                    # minimum width in ADC samples for identifying afterpulses
 #
 #                                                          # list of PMT IDs. QDC / discriminator.

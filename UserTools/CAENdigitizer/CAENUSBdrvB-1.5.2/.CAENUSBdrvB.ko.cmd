@@ -1,0 +1,1 @@
+cmd_/home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/CAENUSBdrvB-1.5.2/CAENUSBdrvB.ko := cp /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/CAENUSBdrvB-1.5.2/CAENUSBdrvB.ko.unsigned /home/annie_local/Downloads/wiener/UserTools/CAENdigitizer/CAENUSBdrvB-1.5.2/CAENUSBdrvB.ko

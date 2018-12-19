@@ -40,6 +40,7 @@
 #include "TSystem.h"
 #include "TPolyMarker.h"
 #include "TText.h"
+#include "TPaveText.h"
 
 //#define DRAWPHD 1
 //#define DRAW_BAD_WAVEFORMS 1
@@ -47,6 +48,7 @@
 //#define FIT_OFFSET // Otherwise just use bin with most entries.
 //#define DRAW_OFFSETFIT 1
 //#define SAVE_WAVEFORM_DATA   // saves waveform data for channel 0
+//#define SAVE_AP_WAVEFORM_DATA  // saves waveform data for channel 0
 //#define DRAW_AFTERPULSEH 1
 //#define DRAW_APWAVEFORM 1
 //#define DRAWAPTGRAPH 1
@@ -549,7 +551,7 @@ int MeasureGain(Module &List, CamacCrate* CC, TestVars testsettings, KeyPressVar
 #ifdef SAVE_WAVEFORM_DATA
 	std::vector<double> waveformdummy;
 	std::vector<double>* waveformdummyp = &waveformdummy;
-	branchpointers.push_back(roottout->Branch("Waveform",&waveformdummy));
+	branchpointers.push_back(roottout->Branch("Waveform",&waveformdummyp));
 #endif
 	
 	// read the waveforms, calculate the integral and fill the tree
@@ -598,13 +600,19 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	int wienersetupok = SetupWienerNIMout(CC, false, true);
 	
 	// fire the LEDs and acquire data from the digitizer to "wave0.txt"
-	//int recorddataok = RunDigitizer(CC, thekeypressvars, testsettings.numafterpulseacquisitionstodisplay,
-	//																 testsettings.afterpulsedisplaytime, "WaveDumpConfig_Afterpulse.txt", true);
+	if(testsettings.numafterpulseacquisitionstodisplay>0){
+		int recorddataok = RunDigitizer(CC, thekeypressvars, testsettings.numafterpulseacquisitionstodisplay,
+																		testsettings.afterpulsedisplaytime, "WaveDumpConfig_Afterpulse.txt", true);
+	}
 	
 	// take more acquisitions, this time without the delays, for measuring the integrated charge
 	int recorddataok = RunDigitizer(CC, thekeypressvars, testsettings.numafterpulseacquisitions, 1, "WaveDumpConfig_Afterpulse.txt", false);
 	
-	// Make the afterpulse file. Not HV dependant so not the same file as gain
+	// Load the data from the generated file
+	std::vector<std::vector<std::vector<double>>> alldata;  // readout, channel, datavalue
+	int loadok = LoadWavedumpFile("wave0.txt", alldata);
+	
+	// Make the afterpulse output file. Not HV dependant so not the same file as gain
 	std::string filename = testsettings.outdir+"/"+testsettings.afterpulsefilenamebase + ".root";
 	TFile* fileout = new TFile(filename.c_str(),"RECREATE");
 	TTree* treeout = new TTree("afterpulsetree","Afterpulse data");
@@ -623,6 +631,10 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	std::vector<double> totalafterpulseintegralextended(8);
 	std::vector<double> afterpulsetoinitialchargeratio(8);
 	std::vector<double> afterpulsetoinitialchargeratioextended(8);
+	std::vector<double> waveformbaselines(8);
+#ifdef SAVE_AP_WAVEFORM_DATA
+	std::vector<double> waveformdata;
+#endif
 	
 	// to store vectors in a tree we need to set branch addresses with a pointer to the vector
 	std::vector<std::vector<double>>* initialpulsetimesp = &initialpulsetimes;
@@ -636,24 +648,33 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	std::vector<double>* totalafterpulseintegralextendedp = &totalafterpulseintegralextended;
 	std::vector<double>* afterpulsetoinitialchargeratiop = &afterpulsetoinitialchargeratio;
 	std::vector<double>* afterpulsetoinitialchargeratioextendedp = &afterpulsetoinitialchargeratioextended;
+	std::vector<double>* waveformbaselinesp=&waveformbaselines;
+#ifdef SAVE_AP_WAVEFORM_DATA
+	// reserve capacity in the vector now so it's address does not change
+	int recordlength = alldata.at(0).at(0).size();
+	waveformdata.reserve(recordlength);
+	std::vector<double>* waveformdatap = &waveformdata;
+#endif
 	
-	treeout->Branch("InitialPulseTime",&initialpulsetimesp);
-	treeout->Branch("InitialPulseAmplitude",&initialpulseamplitudesp);
-	treeout->Branch("InitialPulseIntegral",&initialpulseintegralsp);
+	treeout->Branch("InitialPulseTimes",&initialpulsetimesp);
+	treeout->Branch("InitialPulseAmplitudes",&initialpulseamplitudesp);
+	treeout->Branch("InitialPulseIntegrals",&initialpulseintegralsp);
 	treeout->Branch("AfterpulseTimes",&afterpulsetimesp);
 	treeout->Branch("AfterpulseAmplitudes",&afterpulseamplitudesp);
 	treeout->Branch("AfterpulseIntegrals",&afterpulseintegralsp);
 	treeout->Branch("TotalInitialPulseIntegral",&totalinitialpulseintegralp);
 	treeout->Branch("TotalAfterpulseIntegral",&totalafterpulseintegralp);
 	treeout->Branch("TotalAfterpulseIntegralExtended",&totalafterpulseintegralextendedp);
-	treeout->Branch("AfterpulseToInitialChargeRatio",&afterpulsetoinitialchargeratiop);
-	treeout->Branch("AfterpulseToInitialChargeRatioExtended",&afterpulsetoinitialchargeratioextendedp);
-	
-	std::vector<std::vector<std::vector<double>>> alldata;  // readout, channel, datavalue
-	int loadok = LoadWavedumpFile("wave0.txt", alldata);
+	treeout->Branch("AverageAfterpulseToInitialChargeRatio",&afterpulsetoinitialchargeratiop);
+	treeout->Branch("AverageAfterpulseToInitialChargeRatioExtended",&afterpulsetoinitialchargeratioextendedp);
+	treeout->Branch("WaveformBaselines",&waveformbaselinesp);
+#ifdef SAVE_AP_WAVEFORM_DATA
+	treeout->Branch("Waveform",&waveformdatap);
+#endif
 	
 	TCanvas* peakfindcanv = new TCanvas("peakfindcanv");
 	TH1D* hwaveform=nullptr;
+	TF1* gausfit = new TF1("offsetfit","gaus",0,65);
 	
 	TCanvas* waveformashist_canv=nullptr;
 	TH1D* waveformashist = nullptr;
@@ -682,6 +703,13 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 			afterpulsetoinitialchargeratioextended.at(channel)=0;
 			
 			std::vector<double> data = allreadoutdata.at(channel);
+			
+#ifdef SAVE_AP_WAVEFORM_DATA
+			if(channel==0){
+				waveformdata.clear();
+				for(auto aval : data) waveformdata.push_back(aval);
+			}
+#endif
 			
 			// skip processing if we have no channel data
 			if(data.size()==0){
@@ -718,14 +746,16 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 			// first get some estimates for the gaussian fit, ROOT's not capable on it's own
 			double amplitude=hwaveform->GetBinContent(hwaveform->GetMaximumBin());
 			double width=50; // XXX may need tuning
-			TF1 agausfit("offsetfit","gaus",gauscentre-10*width,gauscentre+10*width);
-			TF1* gausfit = &agausfit;
+			gausfit->SetRange(gauscentre-10*width,gauscentre+10*width);
+			gausfit->SetMinimum(gauscentre-10*width);
+			gausfit->SetMaximum(gauscentre+10*width);
 			gausfit->SetParameters(amplitude,gauscentre,width);
 			//if(verbose) std::cout<<"Intial vals: Max bin is "<<gauscentre<<", amplitude is "<<amplitude<<", stdev is "<<width<<std::endl;
 			
 			hwaveform->Fit(gausfit, "RQ");  // use R to limit range! This is what makes it work!
 			gauscentre = gausfit->GetParameter(1); // 0 is amplitude, 1 is centre, 2 is width
 			//if(verbose) std::cout<<"offset is "<<gauscentre<<std::endl;
+			waveformbaselines.at(channel)=gauscentre;
 			
 /*		////////////////////////////////////////////
 			// Peak finder based on TSpectrum::Search()
@@ -926,7 +956,7 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 				// add the results into the vectors for this channel
 				if(pulsetime<500){
 					initialpulsetimes.at(channel).push_back(pulsetime);
-					initialpulseamplitudes.at(channel).push_back(peakamplitude);
+					initialpulseamplitudes.at(channel).push_back(peakamplitudes.at(pulsei));
 					initialpulseintegrals.at(channel).push_back(theintegral);
 				} else {
 					afterpulsetimes.at(channel).push_back(pulsetime);
@@ -998,6 +1028,7 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	if(gROOT->FindObject("apgraph_canv")){ apgraph_canv->Close(); delete apgraph_canv; apgraph_canv=nullptr; gSystem->ProcessEvents(); }
 	
 	if(hwaveform){ delete hwaveform; hwaveform=nullptr; }
+	if(gausfit){ delete gausfit; gausfit=nullptr; }
 	if(waveformashist){ delete waveformashist; waveformashist=nullptr; }
 	if(apgraph) { delete  apgraph;  apgraph=nullptr; }
 	
@@ -1010,31 +1041,65 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	// the mean value as a single metric of the afterpulse rate
 	TCanvas* canvafterpulse = new TCanvas("canvafterpulse");
 	canvafterpulse->cd();
-	TH1D* hAfterpulse = new TH1D("hafterpulse","placeholder; Ratio (%); Entries",100,0,50);
-	TF1* afterpulsefit = new TF1("afterpulsefit","landau",0,50);
+	TH1D* hAfterpulse = new TH1D("hafterpulse","placeholder; Ratio (%); Entries",100,0,100);
+	TF1* afterpulsefit = new TF1("afterpulsefit","landau",0,200);
 	for(int channeli=0; channeli<testsettings.pmtNames.size(); channeli++){
 		
 		// First draw and fit the distribution with the short afterpulse window
 		if(hAfterpulse) hAfterpulse->Reset();
 		std::string histtitle = "Charge in All Afterpulses / Charge in Initial Pulse "+testsettings.pmtNames.at(channeli);
 		hAfterpulse->SetTitle(histtitle.c_str());
-		TString selectionstring = TString::Format("AfterpulseToInitialChargeRatio[%d]>>hafterpulse",channeli);
-		treeout->Draw(selectionstring.Data(),TString::Format("InitialPulseAmplitude[%d]>0&&InitialPulseTime[%d]<%d",channeli,channeli,500));
+		TString selectionstring = TString::Format("AverageAfterpulseToInitialChargeRatio[%d]>>hafterpulse",channeli);
+		treeout->Draw(selectionstring.Data(),TString::Format("TotalInitialPulseIntegral[%d]<0&&AverageAfterpulseToInitialChargeRatio[%d]>0",channeli,channeli));
 		
 		// get some starting values for the fit
 		double amplitude=hAfterpulse->GetBinContent(hAfterpulse->GetMaximumBin());  // XXX may require tuning
 		double mean=hAfterpulse->GetXaxis()->GetBinCenter(hAfterpulse->GetMaximumBin());
 		double width=2;
 		afterpulsefit->SetParameters(amplitude,mean,width);
-		afterpulsefit->SetRange(mean-5., mean+5.);    // XXX may require tuning
+		afterpulsefit->SetRange(0, 100);    // XXX may require tuning
 		// make the fit and extract the average afterpulse rate
 		hAfterpulse->Fit("afterpulsefit","RQ");
-		double averageafterpulserate = afterpulsefit->GetParameter(1); // 0 is amplitude, 1 is centre, 2 is width
-		std::cout<<"Channel "<<channeli<<" afterpulse rate is "<<averageafterpulserate<<"%"<<std::endl;
+		double averageafterpulsecharge = afterpulsefit->GetParameter(1); // 0 is amplitude, 1 is centre, 2 is widthWs
+		
+		double npulseswithoutafterpulse = hAfterpulse->GetBinContent(hAfterpulse->FindBin(0));
+		double npulseswithafterpulse = hAfterpulse->GetEntries() - npulseswithoutafterpulse;
+		double averageafterpulserate = (npulseswithafterpulse/hAfterpulse->GetEntries())*100.;
+		
+		std::cout<<"Channel "<<channeli<<" average afterpulse rate is "<<averageafterpulserate
+						 <<"%, average afterpulse charge fraction is "<<averageafterpulsecharge<<"%"<<std::endl;
+		
+		// Add a label with the salient information
+		// TText positions are relative TO THE HISTOGRAM AXES!!
+		double xpos = hAfterpulse->GetBinCenter(int(hAfterpulse->GetNbinsX()*0.3));
+		double ypos = hAfterpulse->GetBinContent(hAfterpulse->GetMaximumBin());
+		char buffer [100];
+		
+		TText* aplabel=nullptr;
+		// TText cannot save multiple lines. Alternative is TPaveText
+//		TText* aplabel = new TText(xpos,ypos, buffer); // xpos, ypos, text
+//		aplabel->SetTextSize(0.05);
+//		aplabel->SetTextAlign(22); // align centre H & V
+//		aplabel->Draw();           // don't seem to need "same"
+		
+		// note that neither of these are members of the histogram - need to save the *canvas* to have them stored
+		double left_x   = hAfterpulse->GetBinCenter(int(hAfterpulse->GetNbinsX()*0.3));
+		double right_x  = hAfterpulse->GetBinCenter(int(hAfterpulse->GetNbinsX()*0.7));
+		double bottom_y = hAfterpulse->GetBinContent(hAfterpulse->GetMaximumBin())*0.8;
+		double top_y    = hAfterpulse->GetBinContent(hAfterpulse->GetMaximumBin())*1.0;
+		TPaveText* tpt = new TPaveText(left_x,bottom_y,right_x,top_y);  // takes corners of box
+		snprintf(buffer, 100, "Num Pulses with Afterpulsing: %d%%", int(averageafterpulserate));
+		/*TText* t1 = */tpt->AddText(buffer);
+		snprintf(buffer, 100, "Afterpulse Charge / Intial Charge: %.1f%%",averageafterpulsecharge);
+		tpt->AddText(buffer); // adds a new line - using \n in the text does not work
+		tpt->Draw();
 		
 		// save the histogram and fit to the file
 		std::string histogramname = "AfterpulseRate_"+testsettings.pmtNames.at(channeli);
 		hAfterpulse->Write(histogramname.c_str(),TObject::kOverwrite);
+		std::string histoimgname = testsettings.outdir + "/" + histogramname + ".png";
+		canvafterpulse->SaveAs(histoimgname.c_str());
+		if(aplabel){ delete aplabel; aplabel=nullptr; }
 		
 		// ===============================================================
 		
@@ -1043,22 +1108,52 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 		histtitle = "Charge in All Afterpulses / Charge in Initial Pulse [Extended Window] "
 															+testsettings.pmtNames.at(channeli);
 		hAfterpulse->SetTitle(histtitle.c_str());
-		selectionstring = TString::Format("AfterpulseToInitialChargeRatioExtended[%d]>>hafterpulse",channeli);
-		treeout->Draw(selectionstring.Data(),TString::Format("InitialPulseAmplitude[%d]>0&&InitialPulseTime[%d]<%d",channeli,channeli,500));
+		selectionstring = TString::Format("AverageAfterpulseToInitialChargeRatioExtended[%d]>>hafterpulse",channeli);
+		treeout->Draw(selectionstring.Data(),TString::Format("TotalInitialPulseIntegral[%d]<0&&AverageAfterpulseToInitialChargeRatioExtended[%d]>0",channeli,channeli));
 		
 		// get some starting values for the fit
 		amplitude=hAfterpulse->GetBinContent(hAfterpulse->GetMaximumBin());  // XXX may require tuning
 		mean=hAfterpulse->GetXaxis()->GetBinCenter(hAfterpulse->GetMaximumBin());
 		afterpulsefit->SetParameters(amplitude,mean,width);
-		afterpulsefit->SetRange(mean-5., mean+5.);    // XXX may require tuning
+		afterpulsefit->SetRange(0, 100);    // XXX may require tuning
 		// make the fit and extract the average afterpulse rate
 		hAfterpulse->Fit("afterpulsefit","RQ");
-		averageafterpulserate = afterpulsefit->GetParameter(1); // 0 is amplitude, 1 is centre, 2 is width
-		std::cout<<"Channel "<<channeli<<" afterpulse rate (extended window) is "<<averageafterpulserate<<"%"<<std::endl;
+		averageafterpulsecharge = afterpulsefit->GetParameter(1); // 0 is amplitude, 1 is centre, 2 is width
+		
+		npulseswithoutafterpulse = hAfterpulse->GetBinContent(hAfterpulse->FindBin(0));
+		npulseswithafterpulse = hAfterpulse->GetEntries() - npulseswithoutafterpulse;
+		averageafterpulserate = (npulseswithafterpulse/hAfterpulse->GetEntries())*100.;
+		
+		std::cout<<"Channel "<<channeli<<" average afterpulse rate (extended window) is "
+						 <<averageafterpulserate
+						 <<"%, average afterpulse charge fraction (extended window) is "
+						 <<averageafterpulsecharge<<"%"<<std::endl;
+		
+		// Add a label with the salient information
+		snprintf(buffer, 100, "Num of Pulses with Afterpulsing: %d%%\nAfterpulse Charge / Intial Charge: %.1f%%",
+						 int(averageafterpulserate), averageafterpulsecharge);
+		// TText positions are relative TO THE HISTOGRAM AXES!!
+		xpos = hAfterpulse->GetBinCenter(int(hAfterpulse->GetNbinsX()*0.3));
+		ypos = hAfterpulse->GetBinContent(hAfterpulse->GetMaximumBin());
+		
+//		aplabel = new TText(xpos,ypos, buffer); // xpos, ypos, text
+//		aplabel->SetTextSize(0.05);
+//		aplabel->SetTextAlign(22); // align centre H & V
+//		aplabel->Draw();           // don't seem to need "same"
+		
+		tpt->Clear();
+		snprintf(buffer, 100, "Num Pulses with Afterpulsing: %d%%", int(averageafterpulserate));
+		/*TText* t1 = */tpt->AddText(buffer);
+		snprintf(buffer, 100, "Afterpulse Charge / Intial Charge: %.1f%%",averageafterpulsecharge);
+		tpt->AddText(buffer); // adds a new line - using \n in the text does not work
+		tpt->Draw();
 		
 		// save the histogram and fit to the file
 		histogramname = "AfterpulseRateExtended_"+testsettings.pmtNames.at(channeli);
 		hAfterpulse->Write(histogramname.c_str(),TObject::kOverwrite);
+		histoimgname = testsettings.outdir + "/" + histogramname + ".png";
+		canvafterpulse->SaveAs(histoimgname.c_str());
+		if(aplabel){ delete aplabel; aplabel=nullptr; }
 	}
 	
 	if(gROOT->FindObject("canvafterpulse")){ canvafterpulse->Close(); delete canvafterpulse; canvafterpulse=nullptr; gSystem->ProcessEvents();}
