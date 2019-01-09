@@ -92,6 +92,7 @@ struct TestVars{        // For loading test settings from config file
 	int gainprintfreq=500;
 	
 	std::string afterpulsefilenamebase="afterpulse";
+	int afterpulsevoltage = 1700;
 	int numafterpulseacquisitionstodisplay = 10;
 	int afterpulsedisplaytime=2000;
 	int numafterpulseacquisitions = 100;
@@ -115,7 +116,7 @@ void PrintReg(CamacCrate* CC,int regnum);
 CamacCrate* Create(std::string cardname, std::string config, int cardslot);
 int LoadConfigFile(std::string configfile, std::vector<std::string> &Lcard, std::vector<std::string> &Ccard, std::vector<int> &Ncard);
 int ConstructCards(Module &List, std::vector<std::string> &Lcard, std::vector<std::string> &Ccard, std::vector<int> &Ncard);
-int DoCaenTests(Module &List);
+int DoCaenTests(CAENC117B* caencard);
 int SetupWeinerSoftTrigger(CamacCrate* CC);
 int SetupWienerNIMout(CamacCrate* CC, bool EnableNimOut1, bool EnableNimOut2);
 int ReadRates(Module &List, double countsecs, std::ofstream &data, std::vector<std::vector<double>> &allrates);
@@ -129,7 +130,7 @@ void DoKeyPress(int KEYCODE, KeyPressVars thevars, bool caps=false, int state=0)
 void KeyPressFinalise(KeyPressVars thevars);
 void RunExternalProcess(std::string command, std::promise<int> finishedin);
 int LoadWavedumpFile(std::string filepath, std::vector<std::vector<std::vector<double>>> &data);
-int MeasureIntegralsFromWavedump(std::string waveformfile, std::vector<TBranch*> branches);
+int MeasureIntegralsFromWavedump(int numchannels, std::vector<TBranch*> branches);
 int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>> &gainvector, TestVars testsettings, double voltage);
 int RunQDC(Module &List, CamacCrate* CC, TestVars testsettings, std::string outputfilename);
 int RunDigitizer(CamacCrate* CC, KeyPressVars thekeypressvars, int numacquisitions, int ms_delay, std::string configfile, bool plot);
@@ -162,8 +163,8 @@ constexpr double DT5730_SAMPLE_PERIOD = 2E-9;  // seconds
 constexpr double ADC_NS_PER_SAMPLE = DT5730_SAMPLE_PERIOD/1e-9; // nanoseconds
 constexpr double DT5730_ADC_TO_VOLTS = 8192;   // depends on digitizer resolution
 constexpr double ELECTRON_CHARGE = 1.6E-19;    // turn charge from coulombs to electrons
-constexpr double MAX_PULSE_INTEGRAL = 20e6;    // exclude especially large pulses from PHD fit XXX may require tuning
-constexpr double MIN_PULSE_AMPLITUDE = 6000;   // reject waveforms with no pulses from PHD fit, as slightly incorrect DC offset fit can result in peaks the whole window -> very large integrals
+constexpr double MAX_PULSE_INTEGRAL = 150e6;    // exclude especially large pulses from PHD fit XXX may require tuning
+constexpr double MIN_PULSE_AMPLITUDE = 3000;   // reject waveforms with no pulses from PHD fit, as slightly incorrect DC offset fit can result in peaks the whole window -> very large integrals
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -245,13 +246,14 @@ int main(int argc, char* argv[]){
 	
 	// CAEN C117B tests
 	// ================
-	// if(verbosity>message) std::cout<<"Running CAEN_C117B tests"<<std::endl;
-	//int caen_test_result = DoCaenTests(List);
+	CAENC117B* caencard = (CAENC117B*)List.CC["CAEN"].at(0);   // this way we don't need to add all derived class functions to parent!
+	//if(verbosity>message) std::cout<<"Running CAEN_C117B tests"<<std::endl;
+	//int caen_test_result = DoCaenTests(caencard);
 	
-	// Create class for doing ZMQ control of HV
+	// Create class for doing ZMQ control of HV             // switched for C117B camac control card
 	// ========================================
-	if(verbosity>message) std::cout<<"Creating HV Control class"<<std::endl;
-	PMTTestingHVcontrol* hvcontrol = new PMTTestingHVcontrol("192.168.120.9",5555);
+	//if(verbosity>message) std::cout<<"Creating HV Control class"<<std::endl;
+	//PMTTestingHVcontrol* hvcontrolzmq = new PMTTestingHVcontrol("192.168.120.9",5555);
 	
 	// Set up CCUSB NIM output for triggering
 	// ======================================
@@ -275,6 +277,9 @@ int main(int argc, char* argv[]){
 	// =================
 	if(testsettings.cooldownfilenamebase!="NA"){
 		if(verbosity>message) std::cout<<"Performing Cooldown test"<<std::endl;
+		for(int testchanneli=0; testchanneli<8; testchanneli++){
+			caencard->SetVoltage(0, testchanneli, testsettings.cooldownvoltage);
+		}
 		bool appendtofile=false;  // append/overwrite any existing file. TODO ALERT USER IF FILE EXISTS
 		int cooldownok = DoCooldownTest(List, testsettings, appendtofile);
 	} else {
@@ -296,7 +301,12 @@ int main(int argc, char* argv[]){
 			// ============
 			double testvoltage = testsettings.gainVoltages.at(i);
 			if(verbosity>message) std::cout<<"Setting next voltage: "<<testvoltage<<"V"<<std::endl;
-			hvcontrol->SetVoltage(testvoltage);  // sets the voltage of the 'active' group XXX disabled for debug FIXME, ack but group set fails
+			//hvcontrol->SetVoltage(testvoltage);  // sets the voltage of the 'active' group
+			for(int testchanneli=0; testchanneli<8; testchanneli++){
+			//	if((*(std::max_element(gainvector.at(testchanneli).begin(),gainvector.at(testchanneli).end())))>3e7){
+					caencard->SetVoltage(0, testchanneli, testvoltage);
+			//	}
+			}
 			std::cout<<"Waiting for 5 seconds for voltage to stabilize"<<std::endl;
 			std::this_thread::sleep_for(std::chrono::seconds(5));
 			std::cout<<"Resuming test"<<std::endl;
@@ -320,6 +330,7 @@ int main(int argc, char* argv[]){
 		TCanvas* canv_gain_vs_HV = new TCanvas("gain_vs_HV");
 		canv_gain_vs_HV->cd();
 		for(int channeli=0; channeli<testsettings.pmtNames.size(); channeli++){
+			canv_gain_vs_HV->Clear();
 			TGraph gainvsHV(testsettings.gainVoltages.size(),
 											testsettings.gainVoltages.data(),
 											gainvector.at(channeli).data());
@@ -327,8 +338,15 @@ int main(int argc, char* argv[]){
 			gainvsHV.SetTitle(titles.c_str());
 			gainvsHV.GetHistogram()->SetLabelOffset(0.02,"Y");
 			gainvsHV.SetMarkerStyle(3);
-			gainvsHV.SaveAs(TString::Format("%s/Gain_Vs_HV_%s.C",testsettings.outdir.c_str(),testsettings.pmtNames.at(channeli).c_str()));
+			gSystem->ProcessEvents();
+			if(gainvsHV.GetMaximum()>5e7){
+				gainvsHV.SetMaximum(5e7);
+			}
+			if(gainvsHV.GetMinimum()<1e6){
+				gainvsHV.SetMinimum(1e6);
+			}
 			gainvsHV.Draw();
+			gainvsHV.SaveAs(TString::Format("%s/Gain_Vs_HV_%s.C",testsettings.outdir.c_str(),testsettings.pmtNames.at(channeli).c_str()));
 			canv_gain_vs_HV->SaveAs(TString::Format("%s/Gain_Vs_HV_%s.png",testsettings.outdir.c_str(),testsettings.pmtNames.at(channeli).c_str()));
 		}
 		canv_gain_vs_HV->Close(); delete canv_gain_vs_HV; canv_gain_vs_HV=nullptr; gSystem->ProcessEvents();
@@ -339,9 +357,19 @@ int main(int argc, char* argv[]){
 	// Do afterpulse test
 	// ==================
 	if(testsettings.afterpulsefilenamebase!="NA"){
+		// Set voltages
+		if(verbosity>message) std::cout<<"Setting afterpulse voltage: "<<testsettings.afterpulsevoltage<<"V"<<std::endl;
+		for(int testchanneli=0; testchanneli<8; testchanneli++){
+			caencard->SetVoltage(0, testchanneli, testsettings.afterpulsevoltage);
+		}
 		int afterpulsetestok = RunAfterpulseTest(CC, testsettings, thekeypressvars);
 	} else {
 		if(verbosity>message) std::cout<<"Skipping Afterpulse tests"<<std::endl;
+	}
+	
+	// Lower PMT voltages
+	for(int testchanneli=0; testchanneli<8; testchanneli++){
+		caencard->SetVoltage(0, testchanneli, 1500);
 	}
 	
 	// Cleaup X11 stuff for sending keypresses
@@ -423,6 +451,42 @@ int DoCooldownTest(Module &List, TestVars testsettings, bool append)
 	}
 	data << std::endl;
 	
+////////////////////////////// unfinished: read cooldown data from file to debug plotting without having to redo test
+//	std::ifstream fin (CooldownFileName.c_str());
+//	std::string Line;
+//	std::stringstream ssL;
+//	
+//	double value;
+//	std::string timestamp, ch_0_counts, ch_1_counts, ch_2_counts, ch_3_counts, ch_4_counts, ch_5_counts, ch_6_counts, ch_7_counts,
+//               ch_0_Hz, ch_1_Hz, ch_2_Hz, ch_3_Hz, ch_4_Hz, ch_5_Hz, ch_6_Hz, ch_7_Hz;
+//	
+//	int linenum=0;
+//	
+//	while (getline(fin, Line))
+//	{
+//		linenum++;
+//		if (linenum<4) continue;
+//		} else {
+//			ssL.str("");
+//			ssL.clear();
+//			ssL << Line;
+//			if (ssL.str() != "")
+//			{
+//				ssL >> timestamp>> ch_0_counts>> ch_1_counts>> ch_2_counts>> ch_3_counts>> ch_4_counts>> ch_5_counts>> ch_6_counts>> ch_7_counts>> ch_0_Hz>> ch_1_Hz>> ch_2_Hz>> ch_3_Hz>> ch_4_Hz>> ch_5_Hz>> ch_6_Hz>> ch_7_Hz;
+//				if(data.size()<(readout+1)) data.emplace_back(std::vector<std::vector<double>>(8));
+//				data.at(readout).at(channel).push_back(value);
+//				datalinenum++;
+//				if(datalinenum==recordlength){
+//					dataline=false; // this should be the last data line, next will be header line
+//					headerlinenum=0;
+//					datalinenum=0;
+//				}
+//			}
+//		}
+//	}
+//	fin.close();
+////////////////////////////
+	
 	// just for trials
 	//std::cout << "Test Channel: " << List.CC["SCA"].at(0)->TestChannel(3) << std::endl;
 	//std::vector<int> thresholds{30,40,50,60,70,80,90,100,200,300,400};
@@ -445,7 +509,9 @@ int DoCooldownTest(Module &List, TestVars testsettings, bool append)
 		
 		// Read rates and write to file
 		// ----------------------------
+		std::cout<<"Making cooldown measurement "<<i<<std::endl;
 		int readscalerok = ReadRates(List, countsecs, data, allrates);
+		readouttimes.push_back((countsecs+(waitmins*60))*i);
 		
 		// ***************************************
 		// COOLDOWN MEASUREMENT DELAY
@@ -466,27 +532,28 @@ int DoCooldownTest(Module &List, TestVars testsettings, bool append)
 			usleep(sleeptimeinmicroseconds);
 		}
 		
-		readouttimes.push_back(waitmins*i);
 	}
 	
 	// make and save a TGraph plotting the change in rates
 	TCanvas* cooldowncanv = new TCanvas("cooldowncanv");
 	cooldowncanv->cd();
 	for(int channeli=0; channeli<testsettings.pmtNames.size(); channeli++){
+		cooldowncanv->Clear();
 		std::string pmtName = testsettings.pmtNames.at(channeli);
 		TGraph cooldowngraph(readouttimes.size(),readouttimes.data(), allrates.at(channeli).data());
 		TString titles = TString::Format("Cooldown %s;Time In Dark (mins);Dark Rate (kHz)",pmtName.c_str());
 		cooldowngraph.SetTitle(titles);
 		cooldowngraph.GetHistogram()->SetLabelOffset(0.02,"Y");
 		cooldowngraph.SetMarkerStyle(3);
+		cooldowngraph.Draw();
 		
 		// add a label with the threshold
 		char buffer [100];
 		snprintf(buffer, 100, "Threshold: %dmV", thethreshold);
 		// TText positions are relative TO THE HISTOGRAM AXES!!
 		TH1* hist = cooldowngraph.GetHistogram();
-		double xpos = hist->GetMinimum()+((hist->GetMaximum()-hist->GetMinimum())*0.9);
-		double ypos = (hist->GetXaxis()->GetXmax()-hist->GetXaxis()->GetXmin())/2.;
+		double ypos = hist->GetMinimum()+((hist->GetMaximum()-hist->GetMinimum())*0.9);
+		double xpos = hist->GetXaxis()->GetXmin() + ((hist->GetXaxis()->GetXmax()-hist->GetXaxis()->GetXmin())/2.);
 		TText* thresholdlabel = new TText(xpos,ypos, buffer); // xpos, ypos, text
 		thresholdlabel->SetName("thresholdlabel");
 		thresholdlabel->SetTextSize(0.05);
@@ -496,8 +563,10 @@ int DoCooldownTest(Module &List, TestVars testsettings, bool append)
 		std::string outputfilenamebase = testsettings.outdir + "/Cooldown_" + pmtName;
 		std::string cfilename =  outputfilenamebase + ".C";
 		cooldowngraph.SaveAs(cfilename.c_str());
-		cooldowngraph.Draw();
 		if(gROOT->FindObject("cooldowncanv")){
+			cooldowncanv->Modified();
+			cooldowncanv->Update();
+			gSystem->ProcessEvents();
 			std::string pngfilename = outputfilenamebase + ".png";
 			cooldowncanv->SaveAs(pngfilename.c_str());
 		}
@@ -557,7 +626,8 @@ int MeasureGain(Module &List, CamacCrate* CC, TestVars testsettings, KeyPressVar
 	// read the waveforms, calculate the integral and fill the tree
 	// ============================================================
 	if(verbosity) std::cout<<"Calculating integrals from raw data and filling into ROOT file"<<std::endl;
-	int calculateintegralsok = MeasureIntegralsFromWavedump("wave0.txt", branchpointers);
+	int numchannels = testsettings.pmtNames.size();
+	int calculateintegralsok = MeasureIntegralsFromWavedump(numchannels, branchpointers);
 	
 	// write tree to file
 	if(verbosity) std::cout<<"writing "<<roottout->GetEntries()<<" entries to ROOT file"<<std::endl;
@@ -565,11 +635,14 @@ int MeasureGain(Module &List, CamacCrate* CC, TestVars testsettings, KeyPressVar
 	roottout->Write();
 	
 	// we'll keep the raw data, but rename, move and zippit
-	std::string command = "zip -3 wave0.zip wave0.txt";  // compress for space - 10k readouts for 1 channel are ~40MB in size! This gets down to ~9MB
-	system(command.c_str());
-	std::string newrawfilename = "wave0_" + std::to_string(static_cast<int>(testvoltage))+"V.zip";
-	command = "mv wave0.zip " + testsettings.outdir + "/" + newrawfilename;
-	system(command.c_str());
+	// 10k readouts for 1 channel are ~40MB in size! This gets down to ~9MB
+	for(int channeli=0; channeli<4; channeli++){
+		std::string command = "zip -3 wave" + std::to_string(channeli) + ".zip wave" + std::to_string(channeli) + ".txt";
+		system(command.c_str());
+		std::string newrawfilename = "wave" + std::to_string(channeli) + "_" + std::to_string(static_cast<int>(testvoltage))+"V.zip";
+		command = "mv wave" + std::to_string(channeli) + ".zip " + testsettings.outdir + "/" + newrawfilename;
+		system(command.c_str());
+	}
 	
 	// Plot the pulse height distributions and measure the gains
 	// =========================================================
@@ -610,7 +683,11 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	
 	// Load the data from the generated file
 	std::vector<std::vector<std::vector<double>>> alldata;  // readout, channel, datavalue
-	int loadok = LoadWavedumpFile("wave0.txt", alldata);
+	int numchannels = testsettings.pmtNames.size();
+	for(int channeli=0; channeli<numchannels; channeli++){
+		std::string waveformfile = "wave" + std::to_string(channeli) + ".txt";
+		int loadok = LoadWavedumpFile(waveformfile, alldata);
+	}
 	
 	// Make the afterpulse output file. Not HV dependant so not the same file as gain
 	std::string filename = testsettings.outdir+"/"+testsettings.afterpulsefilenamebase + ".root";
@@ -665,8 +742,8 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 	treeout->Branch("TotalInitialPulseIntegral",&totalinitialpulseintegralp);
 	treeout->Branch("TotalAfterpulseIntegral",&totalafterpulseintegralp);
 	treeout->Branch("TotalAfterpulseIntegralExtended",&totalafterpulseintegralextendedp);
-	treeout->Branch("AverageAfterpulseToInitialChargeRatio",&afterpulsetoinitialchargeratiop);
-	treeout->Branch("AverageAfterpulseToInitialChargeRatioExtended",&afterpulsetoinitialchargeratioextendedp);
+	treeout->Branch("TotalAfterpulseToInitialChargeRatio",&afterpulsetoinitialchargeratiop);
+	treeout->Branch("TotalAfterpulseToInitialChargeRatioExtended",&afterpulsetoinitialchargeratioextendedp);
 	treeout->Branch("WaveformBaselines",&waveformbaselinesp);
 #ifdef SAVE_AP_WAVEFORM_DATA
 	treeout->Branch("Waveform",&waveformdatap);
@@ -857,9 +934,14 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 						inpeak=false;
 						endsample=samplei;
 						if((endsample-startsample)>testsettings.afterpulseminwidth){
-							peakpositions.push_back(peakmaxsample);
-							peakamplitudes.push_back(peakamp);
-							//std::cout<<"found peak at "<<peakmaxsample<<", from "<<startsample<<" to "<<endsample<<std::endl;
+							// reflection veto
+							if(peakpositions.size()>0&&((peakmaxsample-peakpositions.back())<150)){
+								//std::cout<<"vetoing peak at "<<peakmaxsample<<", due to adjacent peak at "<<peakpositions.back()<<std::endl;
+							} else {
+								peakpositions.push_back(peakmaxsample);
+								peakamplitudes.push_back(peakamp);
+								//std::cout<<"found peak at "<<peakmaxsample<<", from "<<startsample<<" to "<<endsample<<std::endl;
+							}
 						}
 						peakamp=0;
 					} else if((gauscentre-data.at(samplei))>peakamp){
@@ -879,6 +961,7 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 			/////////////////////////////////////
 			// measure the pulse charges
 			/////////////////////////////////////
+			//verbose=true;
 			for(int pulsei=0; pulsei<numpeaksfound; pulsei++){
 				
 				uint16_t peaksample = peakpositions.at(pulsei);
@@ -933,26 +1016,6 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 				}
 				if(verbose) std::cout<<"pulse integral = "<<theintegral<<std::endl;
 				
-#ifdef DRAWAPTGRAPH
-				if(apgraph){ delete apgraph; }
-				if(numberline.size()==0){ // we can re-use as all readouts have the same vector length
-					numberline.resize(data.size());
-					std::iota(numberline.begin(),numberline.end(),0);
-				}
-				apgraph = new TGraph(data.size(), numberline.data(), data.data());
-				if(gROOT->FindObject("apgraph_canv")==nullptr) apgraph_canv = new TCanvas("apgraph_canv");
-				apgraph_canv->cd();
-				apgraph_canv->Clear();
-				apgraph->Draw("alp");
-				apgraph_canv->Modified();
-				apgraph_canv->Update();
-				gSystem->ProcessEvents();
-				do{
-					gSystem->ProcessEvents();
-					std::this_thread::sleep_for(std::chrono::milliseconds(100));
-				} while (gROOT->FindObject("apgraph_canv")!=nullptr); // wait until user closes canvas
-#endif
-				
 				// add the results into the vectors for this channel
 				if(pulsetime<500){
 					initialpulsetimes.at(channel).push_back(pulsetime);
@@ -965,6 +1028,28 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 				}
 				
 			}  // loop over pulses found
+			
+#ifdef DRAWAPTGRAPH
+			if(apgraph){ delete apgraph; }
+			if(numberline.size()==0){ // we can re-use as all readouts have the same vector length
+				numberline.resize(data.size());
+				std::iota(numberline.begin(),numberline.end(),0);
+			}
+			std::vector<double> graphdata;
+			for(auto&& sample : data){ graphdata.push_back(sample-gauscentre); }
+			apgraph = new TGraph(data.size(), numberline.data(), graphdata.data()); // use data.data to plot raw
+			if(gROOT->FindObject("apgraph_canv")==nullptr) apgraph_canv = new TCanvas("apgraph_canv");
+			apgraph_canv->cd();
+			apgraph_canv->Clear();
+			apgraph->Draw("alp");
+			apgraph_canv->Modified();
+			apgraph_canv->Update();
+			gSystem->ProcessEvents();
+			do{
+				gSystem->ProcessEvents();
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			} while (gROOT->FindObject("apgraph_canv")!=nullptr); // wait until user closes canvas
+#endif
 			
 			/////////////////////////////////
 			// Calculate the ratio of charge in first peak to afterpulse charge
@@ -1049,8 +1134,9 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 		if(hAfterpulse) hAfterpulse->Reset();
 		std::string histtitle = "Charge in All Afterpulses / Charge in Initial Pulse "+testsettings.pmtNames.at(channeli);
 		hAfterpulse->SetTitle(histtitle.c_str());
-		TString selectionstring = TString::Format("AverageAfterpulseToInitialChargeRatio[%d]>>hafterpulse",channeli);
-		treeout->Draw(selectionstring.Data(),TString::Format("TotalInitialPulseIntegral[%d]<0&&AverageAfterpulseToInitialChargeRatio[%d]>0",channeli,channeli));
+		TString selectionstring = TString::Format("TotalAfterpulseToInitialChargeRatio[%d]>>hafterpulse",channeli);
+		TString cutstring = TString::Format("TotalInitialPulseIntegral[%d]<0&&TotalAfterpulseToInitialChargeRatio[%d]>0",channeli,channeli);
+		treeout->Draw(selectionstring.Data(),cutstring.Data());
 		
 		// get some starting values for the fit
 		double amplitude=hAfterpulse->GetBinContent(hAfterpulse->GetMaximumBin());  // XXX may require tuning
@@ -1108,14 +1194,15 @@ int RunAfterpulseTest(CamacCrate* CC, TestVars testsettings, KeyPressVars thekey
 		histtitle = "Charge in All Afterpulses / Charge in Initial Pulse [Extended Window] "
 															+testsettings.pmtNames.at(channeli);
 		hAfterpulse->SetTitle(histtitle.c_str());
-		selectionstring = TString::Format("AverageAfterpulseToInitialChargeRatioExtended[%d]>>hafterpulse",channeli);
-		treeout->Draw(selectionstring.Data(),TString::Format("TotalInitialPulseIntegral[%d]<0&&AverageAfterpulseToInitialChargeRatioExtended[%d]>0",channeli,channeli));
+		selectionstring = TString::Format("TotalAfterpulseToInitialChargeRatioExtended[%d]>>hafterpulse",channeli);
+		treeout->Draw(selectionstring.Data(),TString::Format("TotalInitialPulseIntegral[%d]<0&&TotalAfterpulseToInitialChargeRatioExtended[%d]>0",channeli,channeli));
 		
 		// get some starting values for the fit
 		amplitude=hAfterpulse->GetBinContent(hAfterpulse->GetMaximumBin());  // XXX may require tuning
 		mean=hAfterpulse->GetXaxis()->GetBinCenter(hAfterpulse->GetMaximumBin());
 		afterpulsefit->SetParameters(amplitude,mean,width);
 		afterpulsefit->SetRange(0, 100);    // XXX may require tuning
+		afterpulsefit->SetNpx(1000);
 		// make the fit and extract the average afterpulse rate
 		hAfterpulse->Fit("afterpulsefit","RQ");
 		averageafterpulsecharge = afterpulsefit->GetParameter(1); // 0 is amplitude, 1 is centre, 2 is width
@@ -1593,27 +1680,14 @@ int ConstructCards(Module &List, std::vector<std::string> &Lcard, std::vector<st
 // ***************************************************************************
 // CAEN C117B HV CONTROL CARD TESTS
 // ***************************************************************************
-int DoCaenTests(Module &List){
-	std::cout <<"CAENET Controller is in slot ";
-	std::cout << List.CC["CAEN"].at(0)->GetSlot() << std::endl;
+int DoCaenTests(CAENC117B* caencard){
+	std::cout <<"CAENET Controller is in slot "<< caencard->GetSlot() << std::endl;
 	
 	// Random functionality trials
-	int ret_caen = List.CC["CAEN"].at(0)->ReadCrateOccupation();
-	int crateN = 0; // ???? 
-	List.CC["CAEN"].at(0)->TestOperation(crateN);
-	int ret_vmax = List.CC["CAEN"].at(0)->SetVmax(6,7,1000);
-	List.CC["CAEN"].at(0)->SetV1(6, 0, 100);
-	int readslot;
-	for (int i=0;i<1;i++){
-		readslot= List.CC["CAEN"].at(0)->ReadSlotN(i);
-	}
-	int ret_test;
-	for (int i_test=0; i_test<15; i_test++){
-		ret_test=List.CC["CAEN"].at(0)->TestOperation(i_test);
-	}
-	int ret_lam = List.CC["CAEN"].at(0)->EnLAM();
-	std::cout << List.CC["CAEN"].at(0)->TestLAM()<<std::endl;
-	
+	int ret_hv = caencard->ReadFwVer();
+			ret_hv = caencard->ReadChannelStatus(0, 10);
+			ret_hv = caencard->ReadChannelParameterValues(0, 10);
+	//	ret_hv = caencard->SetVmax(6,7,1000);
 	return 1;
 }
 
@@ -1948,6 +2022,7 @@ int LoadTestSetup(std::string configfile, TestVars &thesettings){
 				else if (sEmp == "GainPrintFreq") thesettings.gainprintfreq = stoi(iEmp);
 				
 				else if (sEmp == "AfterpulseFileNameBase") thesettings.afterpulsefilenamebase = iEmp;
+				else if (sEmp == "AfterpulseVoltage") thesettings.afterpulsevoltage = stoi(iEmp);
 				else if (sEmp == "NumAfterpulseAcquisitionsToDisplay") thesettings.numafterpulseacquisitionstodisplay = stoi(iEmp);
 				else if (sEmp == "AfterpulseDisplayTime") thesettings.afterpulsedisplaytime = stoi(iEmp);
 				else if (sEmp == "NumAfterpulseAcquisitions") thesettings.numafterpulseacquisitions = stoi(iEmp);
@@ -2207,13 +2282,16 @@ int LoadWavedumpFile(std::string filepath, std::vector<std::vector<std::vector<d
 // ***************************************************************************
 // CALCULATE INTEGRALS FROM DATA TRACES AND WRITE TO A TTREE
 // ***************************************************************************
-int MeasureIntegralsFromWavedump(std::string waveformfile, std::vector<TBranch*> branches){
+int MeasureIntegralsFromWavedump(int numchannels, std::vector<TBranch*> branches){
 	
 	int maxreadouts=std::numeric_limits<int>::max(); // process only the first n readouts
 	bool verbose = false;
 	
 	std::vector<std::vector<std::vector<double>>> alldata;  // readout, channel, datavalue
-	int loadok = LoadWavedumpFile(waveformfile, alldata);
+	for(int channeli=0; channeli<numchannels; channeli++){
+		std::string waveformfile = "wave" + std::to_string(channeli) + ".txt";
+		int loadok = LoadWavedumpFile(waveformfile, alldata);
+	}
 	//std::cout<<"alldata.size()="<<alldata.size()<<", alldata.at(0).size()="<<alldata.at(0).size()<<", alldata.at(0).at(0).size()="<<alldata.at(0).at(0).size()<<std::endl;
 	
 #if defined DRAW_WAVEFORMS || defined DRAW_BAD_WAVEFORMS
@@ -2470,7 +2548,16 @@ int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>>
 		
 		std::cout<<"measuring PHD for channel "<<channelnum<<std::endl;
 		std::string branchname = "Integral[" + std::to_string(channelnum)+"]";
-		std::string histname = "ahist_" + std::to_string(channelnum);
+		std::string histname = "ahist_" + std::to_string(voltage) + "_" + std::to_string(channelnum);
+//		// ROOT keeps the histogram around even after it goes out of scope, and will limit the histogram range
+//		// if there was no data above a given value. We need to extend the axes to allow data at higher values
+//		// disabled as this results in a fixed maximum which is not good for doing fits when gain is low
+//		// instead make sure the histogram name is unique every time to prevent ROOT re-using anything.
+//		// this results in automatic axis range
+//		TH1D* ahistp = (TH1D*)gROOT->FindObject(histname.c_str());
+//		if(ahistp!=nullptr){
+//			ahistp->Reset(); ahistp->SetBins(200, -1000, MAX_PULSE_INTEGRAL);
+//		}
 		std::string drawname = branchname + ">>" + histname;
 		std::string cutstring = branchname + "<" + std::to_string(MAX_PULSE_INTEGRAL) + "&&Peak_Amplitude[" + std::to_string(channelnum)+"] >" + std::to_string(MIN_PULSE_AMPLITUDE);
 #ifdef DRAWPHD
@@ -2484,14 +2571,28 @@ int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>>
 		// to do a double-gaus fit we need to define the fit function first
 		double fitrangelo = ahistp->GetXaxis()->GetBinLowEdge(0);  // XXX FIT RANGE MAY NEED TUNING
 		double fitrangeup = ahistp->GetXaxis()->GetBinUpEdge(ahistp->GetNbinsX());
+		// for the fit to have nice priors for high gain PMTs the mean is not a good estimate
+		// of the position of the 1pe peak. So, try to find a 1pe peak, and use mean if we don't find one
+		int maxpos1=-1, maxpos2=-1, interpos=-1;
+		int max1=-1, max2=-1;
+		int peaktovalleymin=5; // SPE peak must be at least > 5 counts higher than the minimum, to prevent noise being identified as 'SPE peak'
+		int intermin=99999999;
+		for(int bini=1; bini<ahistp->GetNbinsX(); bini++){
+			int bincont = ahistp->GetBinContent(bini);
+			if(bincont>max1){ max1=bincont; maxpos1=bini; intermin=99999999;}
+			else if((bincont<intermin)&&(max1>0)&&(max2==-1)){ intermin=bincont; interpos=bini; }
+			else if((interpos>0)&&(bincont>(intermin+peaktovalleymin))&&(bincont>max2)){ max2=bincont; maxpos2=bini; }
+		}
+		
 		TF1 fit_func("fit_func","gaus(0)+gaus(3)+gaus(6)",fitrangelo,fitrangeup);
+		//TF1 fit_func("fit_func","gaus(0)+gaus(3)",fitrangelo,fitrangeup);
 		//TF1 fit_func("fit_func","gaus(0)+gaus(3)+gaus(6)+(x>[7])*exp(8)",fitrangelo,fitrangeup);
 		// unfortunately we also need to give it initial values for it to work
 		double gaus1amp = ahistp->GetEntries()/10;
 		double gaus1centre = 0; //ahistp->GetMean(); pedestal ~0.
 		double gaus1width = ahistp->GetEntries()*50;
 		double gaus2amp = gaus1amp/5;
-		double gaus2centre = ahistp->GetMean()*1.5;
+		double gaus2centre = (/*(ahistp->GetBinCenter(maxpos2)<ahistp->GetMean())*/(max2>10)&&(maxpos2>0)) ? ahistp->GetBinCenter(maxpos2) : ahistp->GetMean()*1.5;
 		double gaus2width = gaus1width*4;
 		double gaus3amp = gaus2amp/2.;
 		double gaus3centre = gaus2centre*2.;
@@ -2503,6 +2604,7 @@ int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>>
 		std::vector<double> theparams{gaus1amp, gaus1centre, gaus1width, gaus2amp, gaus2centre, gaus2width, gaus3amp, gaus3centre, gaus3width, expstart, expoffset, expdecayconst};
 		
 		fit_func.SetParameters(gaus1amp, gaus1centre, gaus1width, gaus2amp, gaus2centre, gaus2width, gaus3amp, gaus3centre, gaus3width);
+		//fit_func.SetParameters(gaus1amp, gaus1centre, gaus1width, gaus2amp, gaus2centre, gaus2width);
 		//fit_func.SetParameters(theparams.data());  // must use an array to set > 10 parameters!!!
 		//for(int parami=0; parami<6; parami++){
 		//	std::cout<<"default parameter "<<parami<<" = "<<fit_func.GetParameter(parami)<<std::endl;
@@ -2510,11 +2612,16 @@ int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>>
 		
 		// Do the fit
 		fit_func.SetNpx(1000);
+		if((maxpos2>0)&&(max2>10)){
+			fit_func.SetParLimits(1,-1e3,ahistp->GetBinCenter(interpos));
+			fit_func.SetParLimits(4,ahistp->GetBinCenter(interpos),ahistp->GetBinCenter(maxpos2)*1.2);
+			fit_func.SetParLimits(7,ahistp->GetBinCenter(maxpos2)*1.2,MAX_PULSE_INTEGRAL);
+		}
 		ahistp->Fit("fit_func","Q");
 		
 		// Extract the gain
 		double mean_pedestal = fit_func.GetParameter(1);
-		double mean_spe = fit_func.GetParameter(4);
+		double mean_spe = std::min(fit_func.GetParameter(4),fit_func.GetParameter(7));
 		
 		double gain = mean_spe-mean_pedestal;  // for LeCroy QDC see old fit_QDC_Histo.cpp
 		std::cout <<"Pedestal mean is: "<<mean_pedestal<<std::endl;
@@ -2541,10 +2648,19 @@ int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>>
 		gROOT->cd();
 		
 		if(gROOT->FindObject("phd_canv")){
+			phd_canv->SetLogy(0);
+			phd_canv->Modified();
+			phd_canv->Update();
 			std::string filenamebase = thetree->GetCurrentFile()->GetName(); // includes directory
 			filenamebase = filenamebase.substr(0,filenamebase.length()-5);   // strip '.root' extension
 			std::string QDCfilestring = filenamebase + "_" + testsettings.pmtNames.at(channelnum) + ".png";
 			std::cout<<"Saving PHD to name "<<QDCfilestring<<std::endl;
+			phd_canv->SaveAs(QDCfilestring.c_str());
+			// save a log version
+			phd_canv->SetLogy(1);
+			phd_canv->Modified();
+			phd_canv->Update();
+			QDCfilestring = filenamebase + "_" + testsettings.pmtNames.at(channelnum) + "_log.png";
 			phd_canv->SaveAs(QDCfilestring.c_str());
 			phd_canv->Clear();
 		} // else, just retrieve it from the .root file

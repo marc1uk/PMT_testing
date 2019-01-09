@@ -50,3 +50,6 @@ plotwaveforms:
 
 fixkeys:
 	g++ $(CXXFLAGS) src/restore_key_repeat.cpp -o fixkeys -lX11 -lXtst
+
+caentest: include/Camac lib/Camac
+	g++ $(CXXFLAGS) src/caennet_test.cpp -o caennet_test -I include -Llib -lCC -lm -lxx_usb -lJ8 -lL4 -lL5 -lC1 -lpthread #-lL3 -lxx_usb
