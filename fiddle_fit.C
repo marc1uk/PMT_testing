@@ -1,18 +1,19 @@
 double MAX_PULSE_INTEGRAL = 150e6;
-TH1D* ahistp = (TH1D*)_file0->Get("phd_S3");
+TH1D* ahistp = (TH1D*)_file0->Get("phd_S2");
 ahistp->Draw();
 if(ahistp==nullptr){ std::cerr<<"Failed to find PulseHeightDistribution drawn from file!"<<std::endl; return 0; }
 int maxpos1=-1, maxpos2=-1, interpos=-1;
 int max1=-1, max2=-1;
 int peaktovalleymin=5; // SPE peak must be at least > 5 counts higher than the minimum, to prevent noise being identified as 'SPE peak'
 int intermin=99999999;
+cout<<"histogram maximum is at "<<ahistp->GetBinContent(ahistp->GetMaximumBin())<<" giving 8% at "<<ahistp->GetBinContent(ahistp->GetMaximumBin())*0.08<<std::endl;
 for(int bini=1; bini<ahistp->GetNbinsX(); bini++){
   int bincont = ahistp->GetBinContent(bini);
   cout<<"bin "<<bini<<" center "<<ahistp->GetBinCenter(bini)<<" has content "<<bincont<<endl;
-  cout<<"maxpos1="<<maxpos1<<", at "<<ahistp->GetBinCenter(maxpos1)<<", maxpos2="<<maxpos2<<" at "<<ahistp->GetBinCenter(maxpos2)<<", interpos="<<interpos<<" at "<<ahistp->GetBinCenter(interpos)<<", max1="<<max1<<", max2="<<max2<<", intermin="<<intermin<<endl;
   if(bincont>max1){ max1=bincont; maxpos1=bini; intermin=99999999;}
   else if((bincont<intermin)&&(max1>0)&&(max2==-1)){ intermin=bincont; interpos=bini; }
-  else if((interpos>0)&&(bincont>(intermin+peaktovalleymin))&&(bincont>max2)){ max2=bincont; maxpos2=bini; }
+  else if((interpos>0)&&(bincont>(intermin+2.*sqrt(bincont)))&&((bincont>(ahistp->GetBinContent(ahistp->GetMaximumBin())*0.08))||(bincont>100))&&(bincont>max2)){ max2=bincont; maxpos2=bini; }
+  cout<<"maxpos1="<<maxpos1<<", at "<<ahistp->GetBinCenter(maxpos1)<<", maxpos2="<<maxpos2<<" at "<<ahistp->GetBinCenter(maxpos2)<<", interpos="<<interpos<<" at "<<ahistp->GetBinCenter(interpos)<<", max1="<<max1<<", max2="<<max2<<", intermin="<<intermin<<endl;
 }
 cout<<"maxpos1="<<maxpos1<<", at "<<ahistp->GetBinCenter(maxpos1)<<", maxpos2="<<maxpos2<<" at "<<ahistp->GetBinCenter(maxpos2)<<", interpos="<<interpos<<" at "<<ahistp->GetBinCenter(interpos)<<endl;
 cout<<"ahistp->GetMean()="<<ahistp->GetMean()<<", *1.5 = "<<ahistp->GetMean()*1.5<<endl;
@@ -29,6 +30,8 @@ double gaus1width = ahistp->GetEntries()*50;
 double gaus2amp = gaus1amp/5;
 double gaus2centre = (/*(ahistp->GetBinCenter(maxpos2)<ahistp->GetMean())*/(max2>10)&&(maxpos2>0)) ? ahistp->GetBinCenter(maxpos2) : ahistp->GetMean()*1.5;
 double gaus2width = gaus1width*4;
+gaus1width=ahistp->GetBinCenter(interpos)/4.;  // overwrite
+cout<<"overwrite with interpos/4: "<<gaus1width<<std::endl;
 double gaus3amp = gaus2amp/2.;
 double gaus3centre = gaus2centre*2.;
 double gaus3width = gaus2width;
@@ -40,6 +43,13 @@ std::vector<double> theparams{gaus1amp, gaus1centre, gaus1width, gaus2amp, gaus2
 
 fit_func.SetParameters(gaus1amp, gaus1centre, gaus1width, gaus2amp, gaus2centre, gaus2width, gaus3amp, gaus3centre, gaus3width);
 fit_func.SetNpx(1000);
+// NO NEGATIVE GAUSSIANS. NOT IN AMPLITUDE, NOT IN POSITION. NO, ROOT, JUST NO.
+fit_func.SetParLimits(0,0,1e10);
+fit_func.SetParLimits(3,0,1e10);
+fit_func.SetParLimits(6,0,1e10);
+fit_func.SetParLimits(1,0,1e10);
+fit_func.SetParLimits(4,0,1e10);
+fit_func.SetParLimits(7,0,1e10);
 if((maxpos2>0)&&(max2>10)){
 fit_func.SetParLimits(1,-1e3,ahistp->GetBinCenter(interpos));
 fit_func.SetParLimits(4,ahistp->GetBinCenter(interpos),ahistp->GetBinCenter(maxpos2)*1.2);

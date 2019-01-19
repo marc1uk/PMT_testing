@@ -1,4 +1,5 @@
 /* vim:set noexpandtab tabstop=2 wrap */
+/* Marcus O'Flaherty, University of Sheffield, 2019, moflaher@fnal.gov */
 #include <unistd.h>
 #include "CamacCrate.h"
 //#include "CAENC117B.h"
@@ -267,7 +268,7 @@ int main(int argc, char* argv[]){
 	// Set Discriminator threshold
 	// ===========================
 	if(verbosity>message) std::cout<<"Setting up discriminator threshold"<<std::endl;
-	if(testsettings.thresholdmode!=0){
+	if(testsettings.thresholdmode==0){
 		List.CC["DISC"].at(0)->EnableProgrammedThreshold();
 		List.CC["DISC"].at(0)->WriteThresholdValue(testsettings.threshold);
 	}
@@ -277,7 +278,7 @@ int main(int argc, char* argv[]){
 	// =================
 	if(testsettings.cooldownfilenamebase!="NA"){
 		if(verbosity>message) std::cout<<"Performing Cooldown test"<<std::endl;
-		for(int testchanneli=0; testchanneli<8; testchanneli++){
+		for(int testchanneli=0; testchanneli<testsettings.pmtNames.size(); testchanneli++){
 			caencard->SetVoltage(0, testchanneli, testsettings.cooldownvoltage);
 		}
 		bool appendtofile=false;  // append/overwrite any existing file. TODO ALERT USER IF FILE EXISTS
@@ -302,7 +303,7 @@ int main(int argc, char* argv[]){
 			double testvoltage = testsettings.gainVoltages.at(i);
 			if(verbosity>message) std::cout<<"Setting next voltage: "<<testvoltage<<"V"<<std::endl;
 			//hvcontrol->SetVoltage(testvoltage);  // sets the voltage of the 'active' group
-			for(int testchanneli=0; testchanneli<8; testchanneli++){
+			for(int testchanneli=0; testchanneli<testsettings.pmtNames.size(); testchanneli++){
 			//	if((*(std::max_element(gainvector.at(testchanneli).begin(),gainvector.at(testchanneli).end())))>3e7){
 					caencard->SetVoltage(0, testchanneli, testvoltage);
 			//	}
@@ -342,8 +343,8 @@ int main(int argc, char* argv[]){
 			if(gainvsHV.GetMaximum()>5e7){
 				gainvsHV.SetMaximum(5e7);
 			}
-			if(gainvsHV.GetMinimum()<1e6){
-				gainvsHV.SetMinimum(1e6);
+			if(gainvsHV.GetMinimum()<1e4){
+				gainvsHV.SetMinimum(1e4);
 			}
 			gainvsHV.Draw();
 			gainvsHV.SaveAs(TString::Format("%s/Gain_Vs_HV_%s.C",testsettings.outdir.c_str(),testsettings.pmtNames.at(channeli).c_str()));
@@ -359,7 +360,7 @@ int main(int argc, char* argv[]){
 	if(testsettings.afterpulsefilenamebase!="NA"){
 		// Set voltages
 		if(verbosity>message) std::cout<<"Setting afterpulse voltage: "<<testsettings.afterpulsevoltage<<"V"<<std::endl;
-		for(int testchanneli=0; testchanneli<8; testchanneli++){
+		for(int testchanneli=0; testchanneli<testsettings.pmtNames.size(); testchanneli++){
 			caencard->SetVoltage(0, testchanneli, testsettings.afterpulsevoltage);
 		}
 		int afterpulsetestok = RunAfterpulseTest(CC, testsettings, thekeypressvars);
@@ -368,8 +369,8 @@ int main(int argc, char* argv[]){
 	}
 	
 	// Lower PMT voltages
-	for(int testchanneli=0; testchanneli<8; testchanneli++){
-		caencard->SetVoltage(0, testchanneli, 1500);
+	for(int testchanneli=0; testchanneli<testsettings.pmtNames.size(); testchanneli++){
+		caencard->SetVoltage(0, testchanneli, 1200);
 	}
 	
 	// Cleaup X11 stuff for sending keypresses
@@ -511,7 +512,7 @@ int DoCooldownTest(Module &List, TestVars testsettings, bool append)
 		// ----------------------------
 		std::cout<<"Making cooldown measurement "<<i<<std::endl;
 		int readscalerok = ReadRates(List, countsecs, data, allrates);
-		readouttimes.push_back((countsecs+(waitmins*60))*i);
+		readouttimes.push_back(((countsecs+(waitmins*60))*i)/60.);
 		
 		// ***************************************
 		// COOLDOWN MEASUREMENT DELAY
@@ -636,11 +637,14 @@ int MeasureGain(Module &List, CamacCrate* CC, TestVars testsettings, KeyPressVar
 	
 	// we'll keep the raw data, but rename, move and zippit
 	// 10k readouts for 1 channel are ~40MB in size! This gets down to ~9MB
-	for(int channeli=0; channeli<4; channeli++){
+	for(int channeli=0; channeli<testsettings.pmtNames.size(); channeli++){
 		std::string command = "zip -3 wave" + std::to_string(channeli) + ".zip wave" + std::to_string(channeli) + ".txt";
 		system(command.c_str());
-		std::string newrawfilename = "wave" + std::to_string(channeli) + "_" + std::to_string(static_cast<int>(testvoltage))+"V.zip";
+		std::string newrawfilename = "gaintraces_" + testsettings.pmtNames.at(channeli) + "_" + std::to_string(static_cast<int>(testvoltage))+"V.zip";
 		command = "mv wave" + std::to_string(channeli) + ".zip " + testsettings.outdir + "/" + newrawfilename;
+		system(command.c_str());
+		// delete the output file so we don't accidentally re-read it!
+		command = "rm wave" + std::to_string(channeli) + ".txt";
 		system(command.c_str());
 	}
 	
@@ -2181,6 +2185,10 @@ int LoadWavedumpFile(std::string filepath, std::vector<std::vector<std::vector<d
 	
 	// data is a 3-deep vector of: readout, channel, datavalue
 	std::ifstream fin (filepath.c_str());
+	if(not fin.is_open()){
+		std::cerr<<"No wavedump file "<<filepath<<"!!"<<std::endl;
+		assert(false);
+	}
 	std::string Line;
 	std::stringstream ssL;
 	
@@ -2581,7 +2589,7 @@ int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>>
 			int bincont = ahistp->GetBinContent(bini);
 			if(bincont>max1){ max1=bincont; maxpos1=bini; intermin=99999999;}
 			else if((bincont<intermin)&&(max1>0)&&(max2==-1)){ intermin=bincont; interpos=bini; }
-			else if((interpos>0)&&(bincont>(intermin+peaktovalleymin))&&(bincont>max2)){ max2=bincont; maxpos2=bini; }
+			else if((interpos>0)&&(bincont>(intermin+2.*sqrt(bincont)))&&((bincont>(ahistp->GetBinContent(ahistp->GetMaximumBin())*0.08))||(bincont>100))&&(bincont>max2)){ max2=bincont; maxpos2=bini; }
 		}
 		
 		TF1 fit_func("fit_func","gaus(0)+gaus(3)+gaus(6)",fitrangelo,fitrangeup);
@@ -2594,6 +2602,9 @@ int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>>
 		double gaus2amp = gaus1amp/5;
 		double gaus2centre = (/*(ahistp->GetBinCenter(maxpos2)<ahistp->GetMean())*/(max2>10)&&(maxpos2>0)) ? ahistp->GetBinCenter(maxpos2) : ahistp->GetMean()*1.5;
 		double gaus2width = gaus1width*4;
+		if((max2>10)&&(maxpos2>0)){
+			gaus1width=ahistp->GetBinCenter(interpos)/4.;  // overwrite
+		}
 		double gaus3amp = gaus2amp/2.;
 		double gaus3centre = gaus2centre*2.;
 		double gaus3width = gaus2width;
@@ -2612,18 +2623,94 @@ int MakePulseHeightDistribution(TTree* thetree, std::vector<std::vector<double>>
 		
 		// Do the fit
 		fit_func.SetNpx(1000);
+		fit_func.SetParLimits(0,0,1e5);
+		fit_func.SetParLimits(3,0,1e5);
+		fit_func.SetParLimits(6,0,1e5);
+		fit_func.SetParLimits(1,0,1e7);
+		fit_func.SetParLimits(4,0,1e7);
+		fit_func.SetParLimits(7,0,1e7);
 		if((maxpos2>0)&&(max2>10)){
 			fit_func.SetParLimits(1,-1e3,ahistp->GetBinCenter(interpos));
 			fit_func.SetParLimits(4,ahistp->GetBinCenter(interpos),ahistp->GetBinCenter(maxpos2)*1.2);
 			fit_func.SetParLimits(7,ahistp->GetBinCenter(maxpos2)*1.2,MAX_PULSE_INTEGRAL);
 		}
-		ahistp->Fit("fit_func","Q");
 		
-		// Extract the gain
-		double mean_pedestal = fit_func.GetParameter(1);
-		double mean_spe = std::min(fit_func.GetParameter(4),fit_func.GetParameter(7));
+		double usergaus1amp, usergaus1centre, usergaus1width, usergaus2amp, usergaus2centre, usergaus2width, usergaus3amp, usergaus3centre, usergaus3width;
+		TCanvas* priorcanv=nullptr;
+		// preload with calculated priors
+		usergaus1amp    = fit_func.GetParameter(1);
+		usergaus1centre = fit_func.GetParameter(2);
+		usergaus1width  = fit_func.GetParameter(3);
+		usergaus2amp    = fit_func.GetParameter(4);
+		usergaus2centre = fit_func.GetParameter(5);
+		usergaus2width  = fit_func.GetParameter(6);
+		usergaus3amp    = fit_func.GetParameter(7);
+		usergaus3centre = fit_func.GetParameter(8);
+		usergaus3width  = fit_func.GetParameter(9);
+		bool usersaysitsok=false;
+		do{
+			priorcanv = new TCanvas("priorcanv");
+			priorcanv->Clear();
+			ahistp->Draw();
+			ahistp->Fit("fit_func","QI");
+			fit_func.Draw("same");
+			do{
+				if(gROOT->FindObject("priorcanv")) usersaysitsok = (priorcanv->GetLogy()==false);
+				usleep(100000);
+				gSystem->ProcessEvents();
+			} while (gROOT->FindObject("priorcanv"));
+			if(usersaysitsok) break;
+			// else reset the prior back to the best known one
+			fit_func.SetParameter(1,usergaus1amp);
+			fit_func.SetParameter(1, usergaus1amp);
+			fit_func.SetParameter(2, usergaus1centre);
+			fit_func.SetParameter(3, usergaus1width);
+			fit_func.SetParameter(4, usergaus2amp);
+			fit_func.SetParameter(5, usergaus2centre);
+			fit_func.SetParameter(6, usergaus2width);
+			fit_func.SetParameter(7, usergaus3amp);
+			fit_func.SetParameter(8, usergaus3centre);
+			fit_func.SetParameter(9, usergaus3width);
+			// draw it and let the user fiddle
+			priorcanv = new TCanvas("priorcanv");
+			priorcanv->Clear();
+			ahistp->Draw();
+			fit_func.Draw("same");
+			do{
+				usleep(100000);
+				gSystem->ProcessEvents();
+				// keep track of fiddling so we can revert to our best prior yet if the fit fails
+				usergaus1amp    = fit_func.GetParameter(1);
+				usergaus1centre = fit_func.GetParameter(2);
+				usergaus1width  = fit_func.GetParameter(3);
+				usergaus2amp    = fit_func.GetParameter(4);
+				usergaus2centre = fit_func.GetParameter(5);
+				usergaus2width  = fit_func.GetParameter(6);
+				usergaus3amp    = fit_func.GetParameter(7);
+				usergaus3centre = fit_func.GetParameter(8);
+				usergaus3width  = fit_func.GetParameter(9);
+				// n.b. user modifications to the fit_func from the Editor do persist in the local fit_func object
+			} while (gROOT->FindObject("priorcanv"));
+		} while (true);
 		
-		double gain = mean_spe-mean_pedestal;  // for LeCroy QDC see old fit_QDC_Histo.cpp
+		phd_canv->cd();
+		ahistp->Draw();
+		fit_func.Draw("same");
+		gSystem->ProcessEvents();
+		
+		// Extract the pedestal. For low gains, sometimes ROOT switches the pedestal and 1pe peak... 
+		std::vector<double> thegausposns{fit_func.GetParameter(1),fit_func.GetParameter(4),fit_func.GetParameter(7)};
+		double mean_pedestal = (*(std::min_element(thegausposns.begin(),thegausposns.end())));
+		int gauspedestal = std::distance(thegausposns.begin(),std::min_element(thegausposns.begin(),thegausposns.end()));
+		thegausposns.erase(std::min_element(thegausposns.begin(),thegausposns.end()));
+//		double mean_spe = (*(std::min_element(thegausposns.begin(),thegausposns.end())));
+		
+		int gaus1pe = (gauspedestal==0) ? 4 : 0;
+		double dataatgaus2 = ahistp->GetBinContent(ahistp->FindBin(fit_func.GetParameter(gaus1pe)));
+		double dataatgaus3 = ahistp->GetBinContent(ahistp->FindBin(fit_func.GetParameter(7)));
+		double mean_spe = (dataatgaus2>dataatgaus3) ? fit_func.GetParameter(4) : fit_func.GetParameter(7);
+		
+		double gain = abs(mean_spe-mean_pedestal);  // for LeCroy QDC see old fit_QDC_Histo.cpp
 		std::cout <<"Pedestal mean is: "<<mean_pedestal<<std::endl;
 		std::cout <<"SPE mean is: "<<mean_spe<<std::endl;
 		std::cout <<"Gain is: "<<gain<<std::endl;

@@ -1,40 +1,57 @@
 # Test configuration file
 # Setup what PMT tests should be run and their settings
 #
-CooldownFileNameBase                  NA             # suffix will be appended in program. if "NA" test not performed.
-CooldownTotalMins                     2                   # 20 minutes total test duration
-CooldownCountSecs                     30                   # rates will be measured over Xs
-CooldownLoopSecs                      30                   # cooldown measurement loop will run every Xs
-CooldownVoltage                       1700                 # V
-Threshold                             15                    # discriminator threshold in mV. 15 mV miminum, 1V maximum
+CooldownFileNameBase                  cooldown             # suffix will be appended in program. if "NA" test not performed. (default: "cooldown")
+CooldownTotalMins                     30                   # 20 minutes total test duration
+CooldownCountSecs                     60                   # rates will be measured over Xs
+CooldownLoopSecs                      60                   # cooldown measurement loop will run every Xs
+CooldownVoltage                       1600                 # V
+Threshold                             30                   # discriminator threshold in mV*10. 15 miminum, 1 maximum
 ThresholdMode                         0                    # 0 = use programmed threshold, 1 = use FP potentiometer
 #
-GainFileNameBase                      NA                 # voltage and suffix will be appended. if "NA" test not performed.
+GainFileNameBase                      gain                 # voltage and suffix will be appended. if "NA" test not performed. (default: "gain")
 GainNumAcquisitions                   20000                # num QDC reads to use for gain measurement
 GainLivePlot                          1                    # 1 or 0, show live plot of one channel during acquisition.       (Deprecated)
 GainLivePlotChannel                   0                    # which QDC channel to show.                                      (Deprecated)
 GainLivePlotFreq                      500                  # update the plot once every n'th acquisition. lower is slower.   (Deprecated)
 GainPrintFreq                         500                  # print read values once every n'th acquisition. lower is slower. (Deprecated)
 #
-AfterpulseFileNameBase                afterpulse           # suffix will be appended. if "NA" test not performed.
+AfterpulseFileNameBase                afterpulse           # suffix will be appended. if "NA" test not performed. (default: "afterpulse")
 AfterpulseVoltage                     1700                 # V
-NumAfterpulseAcquisitionsToDisplay    0                    # how many waveforms to display to look for afterpulsing
-AfterpulseDisplayTime                 500                  # milliseconds to show the waveform for afterpulse checking
+NumAfterpulseAcquisitionsToDisplay    0                    # how many waveforms to display to look for afterpulsing          (Deprecated)
+AfterpulseDisplayTime                 500                  # milliseconds to show the waveform for afterpulse checking       (Deprecated)
 NumAfterpulseAcquisitions             5000                 # how many waveforms to use for afterpulse rate measurement
 AfterpulseThreshold                   20                   # threshold ADC counts for identifying afterpulses
 AfterpulseWidth                       2                    # minimum width in ADC samples for identifying afterpulses
 #
 #                                                          # list of PMT IDs. QDC / discriminator.
 #StartPmtNames                                             # ordered as QDC / discriminator channels 0, 1, 2...
-S3
-N3
-N2
-E5
+719
+129
+135
+703
 #EndPmtNames
 #
 #StartGainVoltages                                         # list of HVs at which to measure gain.
+#ETEL
+1100
+1200
+1300
+1400
+1450
+1500
+1550
 1600
+1650
 1700
 1800
-1900
+###LUX
+##1200
+##1300
+##1400
+##1500
+##1600
+##1700
+##1800
+##1900
 #EndGainVoltages
